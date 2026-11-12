@@ -72,3 +72,37 @@ class Judge:
 
     async def citation_support(self, answer: str, cited: list[SearchResult]) -> JudgeScore:
         return await self._ask("citation", passages=_passages(cited), answer=answer)
+
+
+_SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\[])")
+
+
+def split_claims(answer: str, min_chars: int = 25) -> list[str]:
+    """Sentence-level claims (citation markers kept; very short fragments skipped)."""
+    return [s.strip() for s in _SENTENCE.split(answer) if len(s.strip()) >= min_chars]
+
+
+@dataclass(frozen=True)
+class GuardResult:
+    unsupported: list[str]
+    checked: int
+    unjudged: int  # claims whose judge output was unusable
+    judge_calls: int
+
+
+async def faithfulness_guard(
+    judge: Judge, answer: str, results: list[SearchResult], threshold: float = 0.5
+) -> GuardResult:
+    """Flag sentences not supported by the passages (one judge call per sentence).
+
+    Prototype for the roadmap's 5.6 decision: costly, so it defaults to offline/eval-only use.
+    """
+    claims = split_claims(answer)
+    unsupported, unjudged = [], 0
+    for claim in claims:
+        score = (await judge._ask("claim", passages=_passages(results), claim=claim)).score
+        if score is None:
+            unjudged += 1
+        elif score < threshold:
+            unsupported.append(claim)
+    return GuardResult(unsupported, len(claims), unjudged, len(claims))

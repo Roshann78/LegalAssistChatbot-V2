@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     qu_refs: bool = True
     qu_abbrev: bool = True
     qu_mapping: bool = True
+    context_max_chars: int = Field(default=12000, ge=500)
+    context_order: str = Field(default="relevance", description="relevance|edges")
+    context_dedupe_threshold: float = Field(default=0.9, gt=0.0, le=1.0)
     prompt_version: str = Field(default="v2")
     history_turns: int = Field(default=4, ge=0, le=20)
 
@@ -152,6 +155,14 @@ class Settings(BaseSettings):
     def validate_rerank(cls, v: str) -> str:
         if v.lower() not in {"none", "lexical", "cross_encoder"}:
             msg = f"Invalid rerank_strategy '{v}'. Allowed: none, lexical, cross_encoder"
+            raise ValueError(msg)
+        return v.lower()
+
+    @field_validator("context_order")
+    @classmethod
+    def validate_order(cls, v: str) -> str:
+        if v.lower() not in {"relevance", "edges"}:
+            msg = f"Invalid context_order '{v}'. Allowed: relevance, edges"
             raise ValueError(msg)
         return v.lower()
 

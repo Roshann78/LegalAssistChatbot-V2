@@ -15,8 +15,7 @@ from pydantic import BaseModel, Field
 from legal_rag.api.middleware import get_request_id
 from legal_rag.api.security import require_admin
 from legal_rag.api.streaming import create_sse_response, format_sse
-from legal_rag.generation.citations import resolve_citations
-from legal_rag.generation.pipeline import ABSTAIN_MESSAGE
+from legal_rag.generation.citations import resolve_citations, strip_invalid_citations
 from legal_rag.llm import LLMError
 
 logger = logging.getLogger("legal_rag.api.routes")
@@ -63,7 +62,7 @@ def build_v1_router() -> APIRouter:
                 )
                 if prepared.abstain:
                     yield format_sse(
-                        "abstained", {**meta, "message": ABSTAIN_MESSAGE, "disclaimer": DISCLAIMER}
+                        "abstained", {**meta, "message": prepared.message, "disclaimer": DISCLAIMER}
                     )
                     yield format_sse("done", {**meta, "finish_reason": "abstained"})
                     return
@@ -76,10 +75,19 @@ def build_v1_router() -> APIRouter:
                 cites, invalid = resolve_citations(answer, prepared.results)
                 if invalid:
                     logger.warning("[%s] dropped invalid citations: %s", req_id, invalid)
+                clean = strip_invalid_citations(answer, len(prepared.results))
                 yield format_sse(
-                    "citations", {"citations": [c.to_dict() for c in cites], "invalid": invalid}
+                    "citations",
+                    {
+                        "citations": [c.to_dict() for c in cites],
+                        "invalid": invalid,
+                        # Tokens already streamed may contain invalid markers; clients should
+                        # replace the displayed text with this sanitized version.
+                        "answer": clean,
+                        "notes": prepared.notes,
+                    },
                 )
-                history.append((body.question, answer))
+                history.append((body.question, clean))
                 del history[: -window or None]
                 await st.session_store.update(session)
                 yield format_sse(

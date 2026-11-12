@@ -38,27 +38,54 @@ def format_passage(i: int, r: SearchResult) -> str:
     return f"{head}\n{_escape(r.text)}"
 
 
+def _tokens(text: str) -> frozenset[str]:
+    return frozenset(text.lower().split())
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    return len(a & b) / len(a | b) if a | b else 1.0
+
+
+def order_passages(results: list[SearchResult], order: str) -> list[SearchResult]:
+    """'relevance' keeps rank order. 'edges' puts the best passages first AND last, weakest in the
+    middle, to counter 'lost in the middle'."""
+    if order != "edges" or len(results) < 3:
+        return results
+    head, tail = results[0::2], results[1::2]
+    return head + tail[::-1]
+
+
 def build_messages(
     version: str,
     question: str,
     results: list[SearchResult],
     max_context_chars: int = 12000,
+    *,
+    order: str = "relevance",
+    dedupe_threshold: float = 0.9,
 ) -> tuple[list[dict[str, str]], list[SearchResult]]:
-    """Numbered passages (deduplicated, budgeted) in the system prompt; question as user turn.
+    """Numbered passages (near-duplicates removed, budgeted) in the system prompt.
 
+    Deduplication runs on rank order (so the better copy wins), then `order` is applied.
     Returns (messages, kept) where kept[i-1] is the passage numbered [i] in the prompt.
     """
-    blocks, kept, used, seen = [], [], 0, set()
+    unique: list[SearchResult] = []
+    sigs: list[frozenset[str]] = []
     for r in results:
-        key = " ".join(r.text.split())[:200]
-        if key in seen:
+        sig = _tokens(r.text)
+        if any(_jaccard(sig, s) >= dedupe_threshold for s in sigs):
             continue
+        sigs.append(sig)
+        unique.append(r)
+    blocks, kept, used = [], [], 0
+    for r in unique:
         block = format_passage(len(kept) + 1, r)
         if used + len(block) > max_context_chars and blocks:
             break
-        seen.add(key)
         blocks.append(block)
         kept.append(r)
         used += len(block)
+    kept = order_passages(kept, order)
+    blocks = [format_passage(i, r) for i, r in enumerate(kept, 1)]
     system = load_prompt(version).format(context="\n\n".join(blocks))
     return [{"role": "system", "content": system}, {"role": "user", "content": question}], kept

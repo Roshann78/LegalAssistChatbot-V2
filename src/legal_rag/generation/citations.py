@@ -46,3 +46,14 @@ def resolve_citations(
         else:
             invalid.append(n)
     return valid, invalid
+
+
+def strip_invalid_citations(answer: str, n_passages: int) -> str:
+    """Remove citation markers that point at passages that do not exist."""
+
+    def fix(m: re.Match[str]) -> str:
+        nums = [int(x) for x in re.split(r"\s*,\s*", m.group(1))]
+        ok = [n for n in nums if 1 <= n <= n_passages]
+        return f"[{', '.join(map(str, ok))}]" if ok else ""
+
+    return _CITE_RE.sub(fix, answer)

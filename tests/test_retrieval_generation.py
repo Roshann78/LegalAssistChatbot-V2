@@ -110,7 +110,12 @@ def test_pipeline_answers_with_citations_and_abstains_off_topic(pipeline):
     ans = asyncio.run(pipeline.answer("What is the punishment for theft?"))
     assert not ans.abstained and ans.citations and ans.citations[0].doc_id == "sample_penal_code"
     off = asyncio.run(pipeline.answer("Give me a recipe for chocolate cake"))
-    assert off.abstained and off.text == ABSTAIN_MESSAGE and off.citations == []
+    assert (
+        off.abstained
+        and off.text.startswith(ABSTAIN_MESSAGE)
+        and "I searched for" in off.text
+        and off.citations == []
+    )
 
 
 def test_old_act_mention_includes_superseded_sources(pipeline):

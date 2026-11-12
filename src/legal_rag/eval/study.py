@@ -129,3 +129,53 @@ def render_ablation(runs: dict[str, dict], order: list[str]) -> str:
         )
         prev = o["mrr"]
     return "\n".join(out) + "\n"
+
+
+def tune_abstain(
+    rows: list[tuple[bool, float]], thresholds: list[float] | None = None
+) -> list[dict]:
+    """Threshold sweep on (answerable, best_dense_score) pairs from the DEV split.
+
+    A question is abstained when its best score is below the threshold. Reports how many
+    unanswerable questions are correctly refused (recall) and how many answerable ones are
+    wrongly refused (false refusals).
+    """
+    thresholds = thresholds if thresholds is not None else [i / 20 for i in range(0, 21)]
+    unans = [s for a, s in rows if not a]
+    ans = [s for a, s in rows if a]
+    out = []
+    for t in thresholds:
+        refused_unans = sum(1 for s in unans if s < t)
+        refused_ans = sum(1 for s in ans if s < t)
+        total_refused = refused_unans + refused_ans
+        out.append(
+            {
+                "threshold": t,
+                "unanswerable_refused": refused_unans / len(unans) if unans else 0.0,
+                "answerable_wrongly_refused": refused_ans / len(ans) if ans else 0.0,
+                "precision": refused_unans / total_refused if total_refused else 1.0,
+                "accuracy": (refused_unans + len(ans) - refused_ans) / max(len(rows), 1),
+            }
+        )
+    return out
+
+
+def recommend_threshold(table: list[dict], max_false_refusal: float = 0.1) -> dict | None:
+    """Highest unanswerable-refusal rate with false refusals within budget (ties: higher t)."""
+    ok = [r for r in table if r["answerable_wrongly_refused"] <= max_false_refusal]
+    return max(ok, key=lambda r: (r["unanswerable_refused"], r["threshold"])) if ok else None
+
+
+def render_abstain_table(table: list[dict], pick: dict | None) -> str:
+    out = [
+        "| threshold | unanswerable refused | answerable wrongly refused | precision | accuracy |",
+        "|---|---|---|---|---|",
+    ]
+    for r in table:
+        mark = " **<- recommended**" if pick is r else ""
+        out.append(
+            f"| {r['threshold']:.2f} | {r['unanswerable_refused']:.2f} | "
+            f"{r['answerable_wrongly_refused']:.2f} | {r['precision']:.2f} | "
+            f"{r['accuracy']:.2f} |{mark}"
+        )
+    return "\n".join(out) + "\n"

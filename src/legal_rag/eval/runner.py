@@ -23,8 +23,16 @@ from legal_rag.eval.golden import (
     load_golden,
     verify_test_lock,
 )
-from legal_rag.eval.judge import Judge
-from legal_rag.eval.study import latest_runs, render_ablation, render_bakeoff, run_bakeoff
+from legal_rag.eval.judge import Judge, faithfulness_guard
+from legal_rag.eval.study import (
+    latest_runs,
+    recommend_threshold,
+    render_ablation,
+    render_abstain_table,
+    render_bakeoff,
+    run_bakeoff,
+    tune_abstain,
+)
 from legal_rag.generation.pipeline import Answer, RAGPipeline
 from legal_rag.ingestion.indexer import Indexer
 from legal_rag.ingestion.manifest import load_manifest
@@ -45,6 +53,18 @@ _B0 = {
     "qu_refs": False,
     "qu_abbrev": False,
     "qu_mapping": False,
+}
+_G1 = {
+    **_B0,
+    "chunk_strategy": "auto",
+    "contextual_prefix": True,
+    "retrieval_mode": "hybrid",
+    "qu_rewrite": True,
+    "qu_refs": True,
+    "qu_abbrev": True,
+    "qu_mapping": True,
+    "prompt_version": "v2",
+    "abstain_threshold": 0.2,
 }
 CONFIGS: dict[str, dict] = {
     "B0_baseline": _B0,
@@ -117,6 +137,10 @@ CONFIGS: dict[str, dict] = {
         "prompt_version": "v2",
         "abstain_threshold": 0.2,
     },
+    "C3_ctx3": {**_G1, "retrieval_top_k": 3},
+    "C5_ctx5": {**_G1, "retrieval_top_k": 5},
+    "C8_ctx8": {**_G1, "retrieval_top_k": 8},
+    "C5_edges": {**_G1, "retrieval_top_k": 5, "context_order": "edges"},
     # PROVISIONAL: a plausible composition, NOT chosen from data. Re-define it from your own
     # ablation (eval ablation) before running it once on the frozen test split.
     "R_final": {
@@ -130,6 +154,14 @@ CONFIGS: dict[str, dict] = {
         "qu_refs": True,
         "qu_abbrev": True,
         "qu_mapping": True,
+    },
+    # PROVISIONAL like R_final: R_final retrieval + prompt v2 + abstention + context settings.
+    "P_final": {
+        **_G1,
+        "domain_router": True,
+        "rerank_strategy": "lexical",
+        "retrieval_top_k": 5,
+        "context_order": "relevance",
     },
 }
 
@@ -176,6 +208,7 @@ async def evaluate(
     questions: list[GoldenQuestion],
     k: int = 5,
     judge: Judge | None = None,
+    guard: bool = False,
 ) -> list[dict]:
     rows = []
     for q in questions:
@@ -200,6 +233,15 @@ async def evaluate(
                 "citation_support": (await judge.citation_support(ans.text, cited)).score
                 if cited
                 else None,
+            }
+        guard_fields: dict = {}
+        if guard and judge is not None and not ans.abstained:
+            tg = time.perf_counter()
+            g = await faithfulness_guard(judge, ans.text, ans.results)
+            guard_fields = {
+                "unsupported_claims": len(g.unsupported),
+                "claims_checked": g.checked,
+                "guard_ms": (time.perf_counter() - tg) * 1e3,
             }
         rows.append(
             {
@@ -227,6 +269,7 @@ async def evaluate(
                 "tokens_out": tok_out,
                 "cost_usd": cost,
                 **scores,
+                **guard_fields,
             }
         )
     return rows
@@ -235,6 +278,11 @@ async def evaluate(
 def _judged(rows: list[dict], key: str) -> float:
     """Mean of judge scores, ignoring unjudged/unusable ones (0.0 if none exist)."""
     return M.mean([r[key] for r in rows if r.get(key) is not None])
+
+
+def _guard_rate(rows: list[dict]) -> float:
+    checked = sum(r.get("claims_checked", 0) for r in rows)
+    return sum(r.get("unsupported_claims", 0) for r in rows) / checked if checked else 0.0
 
 
 def summarize(rows: list[dict]) -> dict:
@@ -252,6 +300,7 @@ def summarize(rows: list[dict]) -> dict:
             "faithfulness": _judged(rs, "faithfulness"),
             "answer_rel": _judged(rs, "answer_rel"),
             "citation_support": _judged(rs, "citation_support"),
+            "unsupported_rate": _guard_rate(rs),
             "tokens_per_q": M.mean([r["tokens_in"] + r["tokens_out"] for r in rs]),
             "cost_per_q": M.mean([r["cost_usd"] for r in rs]),
             "p50_ms": M.percentile([r["latency_ms"] for r in rs], 50),
@@ -373,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--manifest", type=Path, default=Path("data/manifest.yaml"))
     r.add_argument("--embedder", default=None)
     r.add_argument("--llm", default="fake", choices=["fake", "real"], help="generator")
+    r.add_argument("--guard", action="store_true", help="sentence-level faithfulness guard")
     r.add_argument("--judge", action="store_true", help="LLM judge metrics (needs JUDGE_MODEL)")
     r.add_argument("--out", type=Path, default=Path("eval/runs"))
     r.add_argument("--log", action="store_true", help="append row to experiment_log.md")
@@ -383,6 +433,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="METRIC=VALUE",
         help="fail (exit 1) if overall metric is below value",
     )
+    ta = sub.add_parser("tune-abstain", help="abstention threshold sweep on the dev split")
+    ta.add_argument("--config", default="G1_prompt_v2", choices=sorted(CONFIGS))
+    ta.add_argument("--golden", type=Path, default=Path("eval/golden/dev.jsonl"))
+    ta.add_argument("--data-dir", type=Path, default=Path("data"))
+    ta.add_argument("--manifest", type=Path, default=Path("data/manifest.yaml"))
+    ta.add_argument("--embedder", default=None)
+    ta.add_argument("--max-false-refusal", type=float, default=0.1)
     bo = sub.add_parser("bakeoff", help="retrieval-only embedding model comparison")
     bo.add_argument("--models", nargs="+", required=True)
     bo.add_argument("--golden", type=Path, default=Path("eval/golden/dev.jsonl"))
@@ -400,6 +457,30 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("run_b", type=Path)
     args = ap.parse_args(argv)
 
+    if args.cmd == "tune-abstain":
+        base = Settings(embedding_model=args.embedder) if args.embedder else Settings()
+        pipe = build_pipeline(args.config, base, ExtractiveFakeLLM(), args.data_dir, args.manifest)
+        pipe.s = pipe.s.model_copy(update={"abstain_threshold": 0.0})  # sweep sees raw scores
+        qs = load_golden(args.golden, "dev")  # dev only: the test split is never tuned on
+        pairs = [
+            (
+                q.answerable,
+                max(
+                    (r.dense_score for r in pipe.prepare(q.question, None, q.domain).results),
+                    default=0.0,
+                ),
+            )
+            for q in qs
+        ]
+        table = tune_abstain(pairs)
+        pick = recommend_threshold(table, args.max_false_refusal)
+        print(render_abstain_table(table, pick))
+        print(
+            "Record the chosen value as ABSTAIN_THRESHOLD in config."
+            if pick
+            else "No threshold meets the false-refusal budget."
+        )
+        return 0
     if args.cmd == "bakeoff":
         qs = load_golden(args.golden, "dev")
         print(
@@ -433,7 +514,7 @@ def main(argv: list[str] | None = None) -> int:
     pipeline = build_pipeline(args.config, settings, llm, args.data_dir, args.manifest)
     verify_test_lock(args.golden, args.split)
     questions = load_golden(args.golden, args.split)
-    rows = asyncio.run(evaluate(pipeline, questions, judge=judge))
+    rows = asyncio.run(evaluate(pipeline, questions, judge=judge, guard=args.guard))
     summary = summarize(rows)
     fingerprint = pipeline.retriever.store.fingerprint
     meta = {

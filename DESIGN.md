@@ -33,3 +33,22 @@ saved runs). **No decision is made yet**: nothing has been run on a real corpus,
 * `R_final` is a **provisional** composition, not chosen from data; redefine it from your ablation.
 * Multilingual (4.7): out of scope for now; no Hindi set exists. Revisit with a 10-question Hindi dev set.
 * Parent-child here = the hit plus its neighbouring chunks (same document, +/-1); overlapping parents are not merged.
+
+## Phase 5 (generation and trust): built, not yet measured
+* Prompts are versioned files (`config/prompts/answer_v1.txt` kept as the baseline, `answer_v2.txt` with
+  numbered passages, strict grounding, `[n]` citations, abstention and untrusted-data rules). Whether v2 beats v1
+  on faithfulness is **unmeasured** (`G1_prompt_v2` vs `R_final` needs a real run).
+* Citations: invalid markers are logged, dropped from the structured list, and stripped from the sanitized
+  `answer` sent in the `citations` SSE event (tokens already streamed may contain them; clients should replace
+  the displayed text). Citation *support* accuracy is judge-based and unaudited.
+* Abstention: gate on the best dense score before calling the LLM; message states what was searched and the
+  closest documents. `eval tune-abstain` sweeps thresholds on the **dev** split and prints refusal/false-refusal
+  trade-offs; the default stays 0.0 (off) until you record a tuned value in `ABSTAIN_THRESHOLD`.
+* Context: near-duplicate removal (token Jaccard, `CONTEXT_DEDUPE_THRESHOLD`), `CONTEXT_MAX_CHARS` budget,
+  `CONTEXT_ORDER=relevance|edges`, passage count via `RETRIEVAL_TOP_K` (configs `C3/C5/C8_ctx*`, `C5_edges`).
+* Legal currency: superseded sources and verified old->new mappings produce `notes` in the `citations` event;
+  each citation already carries its `status`. Only `verified: true` mapping entries are used.
+* Faithfulness guard (5.6): sentence-level judge check, `eval run --judge --guard`. It costs one judge call per
+  sentence, so it is **not** wired into the online path.
+  Recommendation pending numbers: keep it eval-only unless measured latency and gain justify more.
+* `P_final` is **provisional** (not chosen from data).
