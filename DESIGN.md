@@ -52,3 +52,20 @@ saved runs). **No decision is made yet**: nothing has been run on a real corpus,
   sentence, so it is **not** wired into the online path.
   Recommendation pending numbers: keep it eval-only unless measured latency and gain justify more.
 * `P_final` is **provisional** (not chosen from data).
+
+## Phases 6-9 (API, observability, packaging, docs)
+* Upload chat reuses the ingestion parser/cleaner/chunker (strategy S0) and the same retriever and generator
+  against a per-upload in-memory index (TTL, LRU cap, chunk cap). The upload ID is an unguessable capability;
+  there are no user accounts. Scanned PDFs are rejected (no OCR). The endpoint takes a raw body
+  (`?filename=`) to avoid a multipart dependency.
+* `/v1/metrics` is an in-process, bounded-window summary (per-stage p50/p95, error and abstention rates), not a
+  Prometheus exporter. Per-process only.
+* Tracing is a local JSONL file written only when `TRACE_PATH` is set. Langfuse was **not** integrated (needs a
+  server and a dependency); traces store question, answer, retrieved ids/scores and timings, never prompt text.
+* Static UI is served by the API at `/ui` (no separate image); API base is same-origin or `?api=`. The old
+  compare mode and voice feature were not rebuilt.
+* Repo safety: pre-commit `block-artifacts` (processed data, vector DBs, logs, `.env`, weights, eval runs) plus
+  secret hooks; CI runs an advisory `pip-audit`. Both CI and Docker are unverified until first run.
+* Test audit: 205 tests, 94% line coverage. Weakest areas: tiny `__main__` shims, abstract base placeholders,
+  the Groq HTTP client (80%), the lazy sentence-transformer/cross-encoder adapters (need real models), and the
+  authoring CLI entry point. Untested by design: live LLM behavior, injection resistance of a real model, Docker.

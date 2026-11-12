@@ -14,6 +14,11 @@ jobs:
       - run: uv sync
       - run: uv run ruff check .
       - run: uv run pytest -q
+      - name: Staged-artifact guard self-check
+        run: uv run python -c "from scripts.check_staged import blocked; assert blocked(['.env']) and not blocked(['.env.example'])"
+      - name: Dependency vulnerability scan (advisory)
+        continue-on-error: true
+        run: uvx pip-audit
       - name: Eval smoke test (regression gate on fixture corpus)
         run: >
           uv run python -m legal_rag.eval run --config G1_prompt_v2

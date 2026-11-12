@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from legal_rag.api.middleware import (
@@ -28,10 +29,13 @@ from legal_rag.api.sessions import (
     SessionStore,
     run_periodic_session_cleanup,
 )
+from legal_rag.api.uploads import UploadStore
 from legal_rag.config.settings import Settings, get_settings
 from legal_rag.generation.pipeline import RAGPipeline
 from legal_rag.llm import GroqClient, LLMAuthError, LLMClient, ResilientLLMClient
 from legal_rag.observability.logging import setup_logging
+from legal_rag.observability.metrics import Metrics
+from legal_rag.observability.tracing import build_tracer
 from legal_rag.retrieval.base import (
     Embedder,
     PlaceholderEmbedder,
@@ -141,6 +145,11 @@ def create_app(
         )
 
         app.state.settings = app_settings
+        app.state.metrics = Metrics()
+        app.state.tracer = build_tracer(app_settings.trace_path)
+        app.state.uploads = UploadStore(
+            app_settings.upload_ttl_seconds, app_settings.upload_max_sessions
+        )
 
         logger.info("Application components initialized (lifespan startup complete)")
 
@@ -169,6 +178,7 @@ def create_app(
         AbuseControlMiddleware,
         rate_limit_rpm=app_settings.rate_limit_rpm,
         max_body_bytes=app_settings.max_body_bytes,
+        path_limits={"/v1/documents/upload": app_settings.upload_max_bytes},
     )
     app.add_middleware(RequestIDMiddleware)
 
@@ -292,4 +302,6 @@ def create_app(
         )
 
     app.include_router(build_v1_router())
+    if app_settings.frontend_dir.is_dir():  # static UI at /ui (same origin as the API)
+        app.mount("/ui", StaticFiles(directory=app_settings.frontend_dir, html=True), name="ui")
     return app

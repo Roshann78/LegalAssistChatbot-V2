@@ -10,6 +10,7 @@ COPY --from=build /install /usr/local
 WORKDIR /app
 COPY --chown=app:app data ./data
 COPY --chown=app:app eval/fixtures ./eval/fixtures
+COPY --chown=app:app frontend ./frontend
 USER app
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000

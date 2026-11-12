@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Legal Assist</title>
+<style>
+  :root { --bg:#fafafa; --fg:#1d1d1f; --muted:#666; --card:#fff; --line:#ddd; --accent:#1a56db; --warn:#b45309; --err:#b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16161a; --fg:#eee; --muted:#9a9aa5; --card:#202027; --line:#34343d; --accent:#6ea8ff; --warn:#f0b36a; --err:#ff8a8a; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .banner { border:1px solid var(--warn); color:var(--warn); padding:8px 12px; border-radius:8px; font-size:14px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+  textarea, select, input[type=file], button { font:inherit; }
+  textarea { flex:1 1 100%; min-height:72px; padding:8px; background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:8px; }
+  button { padding:8px 14px; border-radius:8px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.secondary { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; margin:12px 0; }
+  .muted { color:var(--muted); font-size:14px; }
+  .err { color:var(--err); }
+  #answer { white-space:pre-wrap; }
+  .tag { font-size:12px; border:1px solid var(--line); border-radius:4px; padding:0 6px; margin-left:6px; }
+  .tag.old { color:var(--warn); border-color:var(--warn); }
+  ol { padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Legal Assist</h1>
+  <p class="banner" role="note">Informational only &mdash; not legal advice. Answers can be wrong or incomplete; check the cited sources.</p>
+  <p class="muted" id="stats">Loading corpus stats&hellip;</p>
+
+  <div class="row">
+    <textarea id="q" placeholder="Ask about Indian law or banking regulation&hellip;" maxlength="1000" aria-label="Question"></textarea>
+    <select id="domain" aria-label="Domain"><option value="">Any domain</option><option value="legal">Legal</option><option value="banking">Banking</option></select>
+    <button id="ask">Ask</button>
+  </div>
+  <div class="row">
+    <input type="file" id="file" accept=".pdf,.txt" aria-label="Upload a document">
+    <button class="secondary" id="up">Upload to chat with it</button>
+    <button class="secondary" id="clear" hidden>Remove uploaded document</button>
+    <span class="muted" id="upinfo">Limits: .pdf/.txt, 5&nbsp;MB, 100 pages; deleted after 30&nbsp;min.</span>
+  </div>
+
+  <div class="card" id="out" hidden>
+    <div id="answer"></div>
+    <div id="notes" class="muted"></div>
+    <ol id="cites"></ol>
+    <div id="meta" class="muted"></div>
+  </div>
+  <div id="error" class="err" role="alert"></div>
+</main>
+<script>
+const params = new URLSearchParams(location.search);
+const API = (params.get("api") || "").replace(/\/$/, "");   // empty = same origin
+let conversationId = null, uploadId = null;
+const $ = (id) => document.getElementById(id);
+
+async function loadStats() {
+  try {
+    const r = await fetch(API + "/v1/stats"); const s = await r.json();
+    $("stats").textContent = `${s.documents} documents, ${s.chunks} indexed passages`;
+  } catch { $("stats").textContent = "Corpus stats unavailable."; }
+}
+
+function show(el, text) { el.textContent = text; }
+function parseBlock(block) {
+  let ev = "message", data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event: ")) ev = line.slice(7);
+    else if (line.startsWith("data: ")) data += line.slice(6);
+  }
+  return data ? [ev, JSON.parse(data)] : null;
+}
+
+async function ask() {
+  const question = $("q").value.trim();
+  if (!question) return;
+  $("error").textContent = ""; $("out").hidden = false; $("ask").disabled = true;
+  show($("answer"), ""); show($("notes"), ""); $("cites").innerHTML = ""; show($("meta"), "");
+  const body = { question, domain: $("domain").value || null, conversation_id: conversationId, upload_id: uploadId };
+  try {
+    const res = await fetch(API + "/v1/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || `Request failed (${res.status})`); }
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i; while ((i = buf.indexOf("\n\n")) >= 0) { const msg = parseBlock(buf.slice(0, i)); buf = buf.slice(i + 2); if (msg) handle(msg[0], msg[1]); }
+    }
+  } catch (e) { $("error").textContent = e.message; }
+  finally { $("ask").disabled = false; }
+}
+
+function handle(ev, d) {
+  if (ev === "token") $("answer").textContent += d.content;
+  else if (ev === "abstained") { show($("answer"), d.message); conversationId = d.conversation_id; }
+  else if (ev === "citations") {
+    show($("answer"), d.answer);                       // sanitized text replaces the streamed text
+    show($("notes"), (d.notes || []).join(" "));
+    for (const c of d.citations) {
+      const li = document.createElement("li");
+      const loc = [c.section_or_article, c.page ? `p.${c.page}` : null].filter(Boolean).join(", ");
+      li.textContent = `[${c.index}] ${c.title}${loc ? " — " + loc : ""}`;
+      if (c.status !== "in_force") { const t = document.createElement("span"); t.className = "tag old"; t.textContent = c.status; li.append(t); }
+      $("cites").append(li);
+    }
+  } else if (ev === "done") {
+    conversationId = d.conversation_id || conversationId;
+    if (d.latency_ms) show($("meta"), `${d.latency_ms} ms · request ${d.request_id}`);
+  } else if (ev === "error") { $("error").textContent = `${d.message} (request ${d.request_id})`; }
+}
+
+$("ask").onclick = ask;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask(); });
+$("up").onclick = async () => {
+  const f = $("file").files[0]; if (!f) return;
+  $("error").textContent = "";
+  const r = await fetch(`${API}/v1/documents/upload?filename=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "content-type": "application/octet-stream" }, body: f });
+  const j = await r.json();
+  if (!r.ok) { $("error").textContent = j.message || "Upload failed"; return; }
+  uploadId = j.upload_id; conversationId = null; $("clear").hidden = false;
+  show($("upinfo"), `Chatting with "${j.filename}" (${j.pages} pages). Questions now use only this document.`);
+};
+$("clear").onclick = async () => {
+  if (uploadId) await fetch(`${API}/v1/documents/session/${uploadId}`, { method: "DELETE" });
+  uploadId = null; conversationId = null; $("clear").hidden = true;
+  show($("upinfo"), "Document removed. Questions use the main corpus.");
+};
+loadStats();
+</script>
+</body>
+</html>

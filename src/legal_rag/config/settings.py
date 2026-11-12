@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     context_max_chars: int = Field(default=12000, ge=500)
     context_order: str = Field(default="relevance", description="relevance|edges")
     context_dedupe_threshold: float = Field(default=0.9, gt=0.0, le=1.0)
+    upload_max_bytes: int = Field(default=5_000_000, ge=1024)
+    upload_max_pages: int = Field(default=100, ge=1)
+    upload_max_chunks: int = Field(default=2000, ge=1)
+    upload_ttl_seconds: int = Field(default=1800, ge=30)
+    upload_max_sessions: int = Field(default=50, ge=1)
+    trace_path: Path | None = Field(default=None, description="JSONL request traces (opt-in)")
+    frontend_dir: Path = Field(default=Path("frontend"))
     prompt_version: str = Field(default="v2")
     history_turns: int = Field(default=4, ge=0, le=20)
 

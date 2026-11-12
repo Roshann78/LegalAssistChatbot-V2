@@ -28,10 +28,12 @@ class AbuseControlMiddleware:
         *,
         rate_limit_rpm: int,
         max_body_bytes: int,
+        path_limits: dict[str, int] | None = None,
         time_fn: Callable[[], float] = time.monotonic,
     ) -> None:
         self.app = app
         self.rpm, self.max_body = rate_limit_rpm, max_body_bytes
+        self.path_limits = path_limits or {}
         self.time_fn = time_fn
         self._hits: dict[str, deque[float]] = defaultdict(deque)
 
@@ -51,7 +53,11 @@ class AbuseControlMiddleware:
             return
         headers = dict(scope.get("headers", []))
         length = headers.get(b"content-length")
-        if length and length.isdigit() and int(length) > self.max_body:
+        if (
+            length
+            and length.isdigit()
+            and int(length) > self.path_limits.get(scope["path"], self.max_body)
+        ):
             await self._reject(send, 413, "PAYLOAD_TOO_LARGE", "Request body too large")
             return
         ip = (scope.get("client") or ("unknown", 0))[0]

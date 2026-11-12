@@ -29,3 +29,10 @@ repos:
         entry: python scripts/check_api_keys.py
         language: system
         types: [text]
+
+      - id: block-artifacts
+        name: Block generated artifacts (processed data, vector DBs, logs, .env)
+        entry: python scripts/check_staged.py
+        language: system
+        pass_filenames: false
+        always_run: true

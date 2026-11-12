@@ -1,4 +1,4 @@
-.PHONY: author-draft eval-freeze ingest-check setup test lint format run check clean ingest reindex eval-smoke eval-dev eval-test up down
+.PHONY: demo load-test author-draft eval-freeze ingest-check setup test lint format run check clean ingest reindex eval-smoke eval-dev eval-test up down
 
 setup:
 	uv sync
@@ -50,3 +50,9 @@ author-draft:
 
 eval-freeze:
 	uv run python -m legal_rag.eval freeze --golden eval/golden/test.jsonl
+
+demo:
+	uv run python scripts/demo_server.py
+
+load-test:
+	uv run python scripts/load_test.py --concurrency 10 --seconds 60

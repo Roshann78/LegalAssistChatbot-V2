@@ -1,72 +1,113 @@
 # Legal Assist RAG
 
-A production-style Legal & Banking RAG service (Part 1 of the roadmap in `docs/roadmap/`): structure-aware
-chunking, hybrid retrieval (dense + BM25 with reciprocal rank fusion), metadata filtering, grounded answers
-with validated passage-level citations, abstention, SSE streaming, an eval harness, and abuse controls.
+A production-style, locally runnable RAG service for Indian legal and banking questions. It ingests a
+versioned corpus, retrieves with structure-aware chunking and hybrid search, answers with validated
+passage-level citations, abstains when evidence is weak, and ships with an evaluation harness, abuse
+controls, metrics/tracing, a small web UI and CI.
 
 > Informational only; not legal advice.
 
-## What exists today
+**Honest status:** the engineering is built and tested (205 tests, 94% line coverage) against a small
+*synthetic fixture corpus*. The real corpus (~100 PDFs), the verified golden set and every real-model
+experiment are still to do, so **no retrieval-quality or answer-quality number in this repo is measured on
+real data.** `eval/experiment_log.md` is empty on purpose. See [Not done](#not-done).
 
-| Area | Status |
-|---|---|
-| Config, LLM client (Groq) with retries/backoff, sessions with TTL + cap, SSE streaming, request IDs | done, tested |
-| Typed manifest schema, `validate`, draft helper, hash-based idempotent ingestion CLI | done, tested |
-| Parser (PyMuPDF + text), header/footer cleaning, chunkers S0–S3 with contextual prefix | done, tested |
-| Vector store interface with in-memory and **Qdrant** adapters (dense + sparse, payload filters, fingerprint guard) | done, tested on Qdrant's in-process mode; a Docker/server Qdrant is untested |
-| Normalized per-document JSON, ToC exclusion, token-limited chunks, on-disk embedding cache, safe-order replace | done, tested |
-| CLI: validate, draft, parse, add, update, remove, list, reindex, verify, status, stats, report, lookup | done, tested |
-| Hybrid retrieval (RRF), per-doc cap, query understanding, old→new mapping lookup | done, tested |
-| Versioned prompts, citation validation, status-aware context, confidence gate | done, tested |
-| `/v1/ask` (SSE: token, citations, abstained, done, error), `/v1/stats`, `/v1/feedback`, admin delete | done, tested |
-| Rate limiting, body-size limit, admin API key, prompt-injection delimiting | done, tested |
-| Eval: golden schema, retrieval/abstention/citation metrics, runner, compare, CI regression gate | done, tested on a **synthetic fixture corpus only** |
-| Golden authoring (draft → review → promote), test-split freeze lock, LLM-judge metrics, token/cost tracking | done, tested with fakes; **never run against a real LLM** |
-| Retrieval upgrades as switchable configs: parent-child, weighted hybrid, domain router, section pinning, reranker interface, QU component flags; bake-off + ablation tools | done, tested on the fixture only; **no experiment run, nothing kept/dropped yet** |
-| Generation/trust: near-dup + edge-ordered context, sanitized citations, currency notes, helpful abstention, threshold tuner, faithfulness-guard prototype, `P_final` config | done, tested with fakes; **no real-LLM or real-corpus measurement** |
-| Dockerfile, compose, GitHub Actions CI | written; CI not yet run on GitHub |
+## Architecture
 
-## What is NOT done (needs your data / keys / services)
+```mermaid
+flowchart LR
+  subgraph Ingestion
+    M[manifest.yaml + PDFs] --> P[parse + clean] --> N[normalized JSON] --> C[chunk S0-S3] --> E[embed + sparse] --> S[(vector store)]
+  end
+  subgraph Query
+    Q[question + history] --> U[understand: rewrite, refs, abbrev, old-to-new] --> R[hybrid retrieve + filters] --> RR[rerank] --> G{confidence gate}
+    G -- weak --> A[abstain with guidance]
+    G -- ok --> L[LLM, grounded prompt] --> V[validate citations] --> O[SSE: token, citations, done]
+  end
+  S --> R
+  subgraph Eval
+    GS[golden set] --> RUN[runner + judge] --> REP[reports, ablation, CI gate]
+  end
+```
 
-* **The ~100-document corpus** (Phase 1): `data/manifest.yaml` and the PDFs must be collected from official
-  sources by you. `docs/corpus_plan.md` lists the targets.
-* **The real golden set** (Phase 3): `eval/golden/smoke.jsonl` is 8 synthetic questions for CI. Dev/test splits
-  must be authored and verified against real PDFs.
-* **Measured results**: no B0→final ablation exists; `eval/experiment_log.md` is empty on purpose. No claim in
-  this repo is backed by a real-corpus experiment yet.
-* Phase 2 gaps: the parser comparison (`docs/parser_comparison.md`) was not run (needs your 5 real PDFs; PyMuPDF is the only parser), OCR is not implemented (low-text pages are flagged), no real-model embedder was installed or tested (`slow` marker exists, no slow tests yet), and `docs/ingestion_report.md` / the human acceptance check need the real corpus (`make ingest-check`).
-* Not built: cross-encoder reranker, Langfuse tracing,
-  `/metrics`, document-upload chat, frontend, `/v1/documents/upload`, `/stats` at the root path (it is `/v1/stats`).
-* Embedding quality: the offline `hashing-512` embedder is for tests/CI. For real use install the extra
-  (`uv sync --extra embeddings`) and set `EMBEDDING_MODEL=all-MiniLM-L6-v2` (or a model you choose).
+Stages are separate callables; retrieval returns structured results (`SearchResult`), the pipeline is
+stateless (history is injected), and the same code path serves the API and the eval runner.
 
 ## Quickstart
 
 ```bash
-uv sync                      # (or: pip install -e . pytest pytest-asyncio ruff)
-cp .env.example .env         # set LLM_API_KEY (Groq) and ADMIN_API_KEY
+uv sync                                   # or: pip install -e . pytest pytest-asyncio pytest-cov ruff
+cp .env.example .env                      # set LLM_API_KEY (Groq) and ADMIN_API_KEY
 uv run pytest && uv run ruff check .
-uv run python -m legal_rag.eval run --config G1_prompt_v2 --golden eval/golden/smoke.jsonl \
-    --data-dir eval/fixtures --manifest eval/fixtures/manifest.yaml --embedder hashing-512
+make demo                                 # fixture corpus + fake LLM, UI at http://127.0.0.1:8000/ui/
 ```
 
 Index your own corpus and serve it:
 
 ```bash
-uv run python -m legal_rag.ingestion draft      # draft manifest entries from data/raw
-uv run python -m legal_rag.ingestion validate
-uv run python -m legal_rag.ingestion --yes reindex --all
-uv run python -m legal_rag.ingestion --yes report      # writes docs/ingestion_report.md
-uv run python -m legal_rag.ingestion lookup <doc_id> "Section 4"
-# Qdrant: VECTOR_STORE_BACKEND=qdrant (local path mode, or QDRANT_URL for a server)
-uv run uvicorn legal_rag.api.main:create_app --factory
+python -m legal_rag.ingestion draft                 # draft manifest entries from data/raw
+python -m legal_rag.ingestion validate
+python -m legal_rag.ingestion --yes reindex --all
+python -m legal_rag.ingestion --yes report          # docs/ingestion_report.md
+uvicorn legal_rag.api.main:create_app --factory
 curl -N -X POST localhost:8000/v1/ask -H 'content-type: application/json' \
      -d '{"question":"What is the punishment for theft?"}'
 ```
 
-Windows without `make`: use `.\make.ps1 <target>`; Docker: `docker compose up -d --build`.
+Windows without `make`: `.\make.ps1 <target>`. Docker: `docker compose up -d --build` (see limitations).
+Set `EMBEDDING_MODEL=all-MiniLM-L6-v2` and install `uv sync --extra embeddings` for a real embedder; the
+offline `hashing-512` embedder is for tests and CI only.
 
-## Layout
+## API (all under `/v1`, OpenAPI at `/docs`)
 
-See `docs/roadmap/PART1_PRODUCTION_RAG_ROADMAP_v3.md` for the plan and `DESIGN.md` / `EVAL.md` for decisions and
-eval methodology. Code lives in `src/legal_rag/{api,config,generation,ingestion,retrieval,eval,llm,observability}`.
+| Endpoint | Purpose |
+|---|---|
+| `POST /v1/ask` | SSE stream: `token`, `citations` (structured + sanitized answer + currency notes), `abstained`, `done`, `error`. Optional `domain`, `conversation_id`, `upload_id`. |
+| `POST /v1/documents/upload?filename=` | Raw-body upload (.pdf/.txt, size/page/chunk caps) into an ephemeral, isolated, TTL-bound index |
+| `DELETE /v1/documents/session/{upload_id}` | Delete an upload now |
+| `GET /v1/stats`, `GET /v1/metrics` | Corpus counts; latency p50/p95 per stage, error and abstention rate |
+| `POST /v1/feedback` | Thumbs up/down tied to the request ID |
+| `GET /v1/admin/traces/{request_id}`, `DELETE /v1/admin/documents/{doc_id}` | Admin (`X-API-Key`; disabled if `ADMIN_API_KEY` unset) |
+| `GET /health`, `GET /ready` | Liveness; readiness of LLM, embedder, store |
+
+Controls: CORS allow-list, per-IP rate limit, request-size limits (bounded streaming for uploads), question
+length cap, secret-scrubbed JSON logs with request IDs, retrieved/uploaded text delimited as untrusted data.
+Tracing is **opt-in** (`TRACE_PATH`), writes question/answer but never the prompt text.
+
+## What is built
+
+| Area | State |
+|---|---|
+| Config, Groq client with retry/backoff, sessions (TTL + cap), SSE streaming, request IDs | tested |
+| Manifest schema + validation, parsing/cleaning, normalized JSON, chunkers S0-S3, ToC exclusion, token limits | tested |
+| In-memory and Qdrant (in-process) stores; fingerprint guard; safe-order updates; embedding cache; ingestion CLI | tested |
+| Hybrid RRF retrieval, weights, filters, section pinning, router, reranker interface, parent-child, query understanding | tested; **unmeasured** |
+| Prompts v1/v2, citation validation, currency notes, abstention + tuner, faithfulness-guard prototype | tested with fakes |
+| Eval: golden schema/authoring/freeze, metrics, LLM judge, runner, bake-off, ablation, CI gate | tested on fixtures |
+| Upload chat, metrics, file tracing, static UI (`/ui`), staged-artifact guard, load/demo scripts | tested |
+| Dockerfile, compose, GitHub Actions | written; see limitations |
+
+## Not done
+
+* **Corpus and golden set** (yours to supply): `data/manifest.yaml`, ~100 PDFs (`docs/corpus_plan.md`), ~100
+  verified questions (`eval/golden/README.md`). Only 8 synthetic CI questions exist.
+* **All real-data results:** B0 baseline, the B1-B6 ablation, embedding bake-off, abstention threshold, judge
+  audit, `P_final`, the single frozen test run. `R_final`/`P_final` configs are provisional placeholders.
+* **Not built:** Langfuse (a local JSONL tracer is used instead), hosted reranker, OCR, Hindi/multilingual
+  evaluation, UI compare mode and voice, Redis sessions, PDF page anchors in citations.
+* **Never run here:** Docker image build/compose (daemon was unavailable), GitHub Actions (including the
+  advisory `pip-audit` step), a real LLM, a real cross-encoder or sentence-transformer, Qdrant server mode.
+* `uv.lock` predates the newer dependencies; run `uv lock`.
+
+## Limitations
+
+Rate limiting and sessions are per-process (use Redis-style stores to scale out); the Content-Length check
+does not cover chunked bodies except on upload, which streams with a hard cap; prompt-injection defences are
+structural (delimiting, escaping, rules) and their effect on a real LLM is untested
+(`eval/injection/` has 5 hostile documents for that experiment); judge scores are unaudited.
+
+## Docs
+
+`DESIGN.md` (decisions and what is unmeasured) · `EVAL.md` (method) · `docs/load_test.md` ·
+`docs/demo_script.md` · `docs/resume_kit.md` · `docs/roadmap/` · `docs/corpus_plan.md` ·
+`docs/metadata_schema.md`.
