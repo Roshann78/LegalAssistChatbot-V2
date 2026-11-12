@@ -1,4 +1,4 @@
-.PHONY: ingest-check setup test lint format run check clean ingest reindex eval-smoke eval-dev eval-test up down
+.PHONY: author-draft eval-freeze ingest-check setup test lint format run check clean ingest reindex eval-smoke eval-dev eval-test up down
 
 setup:
 	uv sync
@@ -44,3 +44,9 @@ down:
 
 ingest-check:
 	uv run python -m legal_rag.ingestion --yes report --out docs/ingestion_report.md
+
+author-draft:
+	uv run python -m legal_rag.eval.author draft --per-category 5
+
+eval-freeze:
+	uv run python -m legal_rag.eval freeze --golden eval/golden/test.jsonl

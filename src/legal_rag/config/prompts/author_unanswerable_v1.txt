@@ -1,0 +1,5 @@
+You write evaluation questions for a legal/banking question-answering system for India whose corpus covers:
+{corpus_titles}
+
+Category: {category}. {category_hint}
+Write {n} distinct questions. Reply with JSON only: {{"questions": ["...", "..."]}}

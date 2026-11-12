@@ -21,6 +21,7 @@ with validated passage-level citations, abstention, SSE streaming, an eval harne
 | `/v1/ask` (SSE: token, citations, abstained, done, error), `/v1/stats`, `/v1/feedback`, admin delete | done, tested |
 | Rate limiting, body-size limit, admin API key, prompt-injection delimiting | done, tested |
 | Eval: golden schema, retrieval/abstention/citation metrics, runner, compare, CI regression gate | done, tested on a **synthetic fixture corpus only** |
+| Golden authoring (draft → review → promote), test-split freeze lock, LLM-judge metrics, token/cost tracking | done, tested with fakes; **never run against a real LLM** |
 | Dockerfile, compose, GitHub Actions CI | written; CI not yet run on GitHub |
 
 ## What is NOT done (needs your data / keys / services)
@@ -32,7 +33,7 @@ with validated passage-level citations, abstention, SSE streaming, an eval harne
 * **Measured results**: no B0→final ablation exists; `eval/experiment_log.md` is empty on purpose. No claim in
   this repo is backed by a real-corpus experiment yet.
 * Phase 2 gaps: the parser comparison (`docs/parser_comparison.md`) was not run (needs your 5 real PDFs; PyMuPDF is the only parser), OCR is not implemented (low-text pages are flagged), no real-model embedder was installed or tested (`slow` marker exists, no slow tests yet), and `docs/ingestion_report.md` / the human acceptance check need the real corpus (`make ingest-check`).
-* Not built: cross-encoder reranker, LLM-judge faithfulness metrics, Langfuse tracing,
+* Not built: cross-encoder reranker, Langfuse tracing,
   `/metrics`, document-upload chat, frontend, `/v1/documents/upload`, `/stats` at the root path (it is `/v1/stats`).
 * Embedding quality: the offline `hashing-512` embedder is for tests/CI. For real use install the extra
   (`uv sync --extra embeddings`) and set `EMBEDDING_MODEL=all-MiniLM-L6-v2` (or a model you choose).

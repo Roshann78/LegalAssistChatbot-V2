@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     qdrant_path: Path = Field(default=Path("data/processed/qdrant"))
     qdrant_collection: str = Field(default="legal_rag")
     embedding_cache_path: Path = Field(default=Path("data/cache/embeddings.sqlite"))
+    judge_model: str = Field(default="", description="Pinned judge model id (required for --judge)")
+    price_in_per_1k: float = Field(default=0.0, ge=0.0, description="USD per 1k prompt tokens")
+    price_out_per_1k: float = Field(default=0.0, ge=0.0, description="USD per 1k output tokens")
     prompt_version: str = Field(default="v2")
     history_turns: int = Field(default=4, ge=0, le=20)
 

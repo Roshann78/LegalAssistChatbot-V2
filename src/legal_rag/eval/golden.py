@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from enum import StrEnum
 from pathlib import Path
@@ -52,3 +53,35 @@ def load_golden(path: Path, split: str | None = None) -> list[GoldenQuestion]:
         if split is None or q.split == split:
             qs.append(q)
     return qs
+
+
+def file_digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+
+
+def lock_path(golden: Path) -> Path:
+    return golden.with_suffix(".lock")
+
+
+def freeze_test_split(golden: Path) -> str:
+    """Record the test file's hash. After this, any edit to it is detected on test runs."""
+    digest = file_digest(golden)
+    lock_path(golden).write_text(digest + "\n", encoding="utf-8")
+    return digest
+
+
+def verify_test_lock(golden: Path, split: str) -> None:
+    """Test-split runs require a lock file and refuse a modified (unfrozen) test set."""
+    if split != "test":
+        return
+    lock = lock_path(golden)
+    if not lock.exists():
+        raise RuntimeError(f"{golden} is not frozen: run `eval freeze --golden {golden}` first")
+    if lock.read_text(encoding="utf-8").strip() != file_digest(golden):
+        raise RuntimeError(f"{golden} changed since it was frozen; test split must not be edited")
+
+
+def split_overlap(dev: list[GoldenQuestion], test: list[GoldenQuestion]) -> list[str]:
+    """Question texts appearing in both splits (leakage)."""
+    norm = lambda q: " ".join(q.question.lower().split())  # noqa: E731
+    return sorted({norm(q) for q in dev} & {norm(q) for q in test})

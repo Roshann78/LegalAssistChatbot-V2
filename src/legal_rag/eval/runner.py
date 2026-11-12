@@ -16,11 +16,18 @@ from pathlib import Path
 
 from legal_rag.config.settings import Settings
 from legal_rag.eval import metrics as M
-from legal_rag.eval.golden import GoldenQuestion, load_golden
+from legal_rag.eval.golden import (
+    GoldenQuestion,
+    file_digest,
+    freeze_test_split,
+    load_golden,
+    verify_test_lock,
+)
+from legal_rag.eval.judge import Judge
 from legal_rag.generation.pipeline import Answer, RAGPipeline
 from legal_rag.ingestion.indexer import Indexer
 from legal_rag.ingestion.manifest import load_manifest
-from legal_rag.llm import LLMClient, LLMResponse
+from legal_rag.llm import GroqClient, LLMClient, LLMResponse
 from legal_rag.retrieval.embedder import build_embedder
 from legal_rag.retrieval.hybrid import Retriever
 from legal_rag.retrieval.memory_store import InMemoryVectorStore
@@ -87,8 +94,15 @@ def build_pipeline(
     return RAGPipeline(retriever, llm, s, MappingTable())
 
 
+def approx_tokens(text: str) -> int:
+    return -(-len(text) // 4)
+
+
 async def evaluate(
-    pipeline: RAGPipeline, questions: list[GoldenQuestion], k: int = 5
+    pipeline: RAGPipeline,
+    questions: list[GoldenQuestion],
+    k: int = 5,
+    judge: Judge | None = None,
 ) -> list[dict]:
     rows = []
     for q in questions:
@@ -97,6 +111,23 @@ async def evaluate(
         latency = (time.perf_counter() - t0) * 1e3
         retrieved = [r.doc_id for r in ans.results]
         gold = set(q.gold_doc_ids)
+        # Estimated token usage (~4 chars/token): the streaming path reports no provider usage.
+        tok_in = sum(approx_tokens(r.text) for r in ans.results) if not ans.abstained else 0
+        tok_out = approx_tokens(ans.text) if not ans.abstained else 0
+        cost = (
+            tok_in / 1000 * pipeline.s.price_in_per_1k
+            + tok_out / 1000 * pipeline.s.price_out_per_1k
+        )
+        scores: dict[str, float | None] = {}
+        if judge is not None and not ans.abstained:
+            cited = [ans.results[c.index - 1] for c in ans.citations]
+            scores = {
+                "faithfulness": (await judge.faithfulness(ans.text, ans.results)).score,
+                "answer_rel": (await judge.relevance(q.question, ans.text)).score,
+                "citation_support": (await judge.citation_support(ans.text, cited)).score
+                if cited
+                else None,
+            }
         rows.append(
             {
                 "id": q.id,
@@ -119,9 +150,18 @@ async def evaluate(
                     not ans.abstained and bool(ans.citations) and not ans.invalid_citations
                 ),
                 "latency_ms": latency,
+                "tokens_in": tok_in,
+                "tokens_out": tok_out,
+                "cost_usd": cost,
+                **scores,
             }
         )
     return rows
+
+
+def _judged(rows: list[dict], key: str) -> float:
+    """Mean of judge scores, ignoring unjudged/unusable ones (0.0 if none exist)."""
+    return M.mean([r[key] for r in rows if r.get(key) is not None])
 
 
 def summarize(rows: list[dict]) -> dict:
@@ -136,6 +176,11 @@ def summarize(rows: list[dict]) -> dict:
             "ndcg@5": M.mean([r["ndcg"] for r in ans]),
             "abstention_acc": M.mean([float(r["abstention_correct"]) for r in rs]),
             "citation_valid": M.mean([r["citation_valid"] for r in non_abstained]),
+            "faithfulness": _judged(rs, "faithfulness"),
+            "answer_rel": _judged(rs, "answer_rel"),
+            "citation_support": _judged(rs, "citation_support"),
+            "tokens_per_q": M.mean([r["tokens_in"] + r["tokens_out"] for r in rs]),
+            "cost_per_q": M.mean([r["cost_usd"] for r in rs]),
             "p50_ms": M.percentile([r["latency_ms"] for r in rs], 50),
             "p95_ms": M.percentile([r["latency_ms"] for r in rs], 95),
         }
@@ -156,27 +201,35 @@ def git_commit() -> str:
 
 
 def render_report(meta: dict, summary: dict, rows: list[dict]) -> str:
-    cols = [
-        "n",
-        "hit@5",
-        "recall@8",
-        "mrr",
-        "ndcg@5",
-        "abstention_acc",
-        "citation_valid",
-        "p50_ms",
-        "p95_ms",
-    ]
+    cols = ["n", "hit@5", "recall@8", "mrr", "ndcg@5", "abstention_acc", "citation_valid"]
+    if meta.get("judge_model"):
+        cols += ["faithfulness", "answer_rel", "citation_support"]
+    cols += ["tokens_per_q", "cost_per_q", "p50_ms", "p95_ms"]
+    ints = ("n", "p50_ms", "p95_ms", "tokens_per_q")
 
     def line(name: str, d: dict) -> str:
-        cells = [f"{d[c]:.0f}" if c in ("n", "p50_ms", "p95_ms") else f"{d[c]:.3f}" for c in cols]
+        cells = []
+        for c in cols:
+            cells.append(
+                f"{d[c]:.0f}"
+                if c in ints
+                else f"{d[c]:.4f}"
+                if c == "cost_per_q"
+                else f"{d[c]:.3f}"
+            )
         return f"| {name} | " + " | ".join(cells) + " |"
 
+    judge = (
+        f"{meta['judge_model']} (prompts {meta['judge_prompt_version']}, temp 0)"
+        if meta.get("judge_model")
+        else "none"
+    )
     out = [
         f"# Eval run: {meta['config']} ({meta['split']})",
         "",
         f"- commit: `{meta['git_commit']}`  fingerprint: `{meta['fingerprint']}`",
         f"- prompt: {meta['prompt_version']}  llm: {meta['llm']}  embedder: {meta['embedder']}",
+        f"- judge: {judge}  golden: `{meta['golden_hash']}`",
         "",
         "| category | " + " | ".join(cols) + " |",
         "|---" * (len(cols) + 1) + "|",
@@ -197,6 +250,11 @@ def render_report(meta: dict, summary: dict, rows: list[dict]) -> str:
 
 def compare(a: dict, b: dict) -> str:
     keys = ["hit@5", "recall@8", "mrr", "ndcg@5", "abstention_acc", "citation_valid"]
+    keys += [
+        k
+        for k in ("faithfulness", "answer_rel", "citation_support", "cost_per_q")
+        if k in a["summary"]["overall"] and k in b["summary"]["overall"]
+    ]
     lines = [
         f"| metric | {a['meta']['config']} | {b['meta']['config']} | delta |",
         "|---|---|---|---|",
@@ -216,15 +274,19 @@ def check_thresholds(summary: dict, thresholds: dict[str, float]) -> list[str]:
 
 
 def append_log(path: Path, meta: dict, overall: dict) -> None:
+    def f(key: str) -> str:
+        return f"{overall[key]:.3f}" if meta.get("judge_model") else ""
+
     row = (
         f"| {meta['config']} | {meta['date']} | {meta['config']} ({meta['split']}) | "
-        f"{overall['hit@5']:.3f} | {overall['recall@8']:.3f} | {overall['mrr']:.3f} | | | "
-        f"{overall['abstention_acc']:.3f} | {overall['citation_valid']:.3f} | "
-        f"{overall['p50_ms']:.0f} / {overall['p95_ms']:.0f} ms | | | "
-        f"commit {meta['git_commit']} |\n"
+        f"{overall['hit@5']:.3f} | {overall['recall@8']:.3f} | {overall['mrr']:.3f} | "
+        f"{f('faithfulness')} | {f('answer_rel')} | {overall['abstention_acc']:.3f} | "
+        f"{f('citation_support') or format(overall['citation_valid'], '.3f')} | "
+        f"{overall['p50_ms']:.0f} / {overall['p95_ms']:.0f} ms | ${overall['cost_per_q']:.4f} | | "
+        f"commit {meta['git_commit']}; llm {meta['llm']} |\n"
     )
-    with path.open("a", encoding="utf-8") as f:
-        f.write(row)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(row)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -237,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--data-dir", type=Path, default=Path("data"))
     r.add_argument("--manifest", type=Path, default=Path("data/manifest.yaml"))
     r.add_argument("--embedder", default=None)
+    r.add_argument("--llm", default="fake", choices=["fake", "real"], help="generator")
+    r.add_argument("--judge", action="store_true", help="LLM judge metrics (needs JUDGE_MODEL)")
     r.add_argument("--out", type=Path, default=Path("eval/runs"))
     r.add_argument("--log", action="store_true", help="append row to experiment_log.md")
     r.add_argument(
@@ -246,20 +310,35 @@ def main(argv: list[str] | None = None) -> int:
         metavar="METRIC=VALUE",
         help="fail (exit 1) if overall metric is below value",
     )
+    fz = sub.add_parser("freeze", help="freeze the test split (records its hash)")
+    fz.add_argument("--golden", type=Path, default=Path("eval/golden/test.jsonl"))
     c = sub.add_parser("compare")
     c.add_argument("run_a", type=Path)
     c.add_argument("run_b", type=Path)
     args = ap.parse_args(argv)
 
+    if args.cmd == "freeze":
+        print(f"frozen {args.golden}: {freeze_test_split(args.golden)}")
+        return 0
     if args.cmd == "compare":
         print(compare(json.loads(args.run_a.read_text()), json.loads(args.run_b.read_text())))
         return 0
 
     settings = Settings(embedding_model=args.embedder) if args.embedder else Settings()
     llm: LLMClient = ExtractiveFakeLLM()
+    if args.llm == "real":
+        llm = GroqClient(settings)
+    judge = None
+    if args.judge:
+        if not settings.judge_model:
+            print("ERROR: --judge needs JUDGE_MODEL set (pinned judge model id)", file=sys.stderr)
+            return 2
+        judge_llm = GroqClient(settings.model_copy(update={"llm_model": settings.judge_model}))
+        judge = Judge(judge_llm, settings.judge_model)
     pipeline = build_pipeline(args.config, settings, llm, args.data_dir, args.manifest)
+    verify_test_lock(args.golden, args.split)
     questions = load_golden(args.golden, args.split)
-    rows = asyncio.run(evaluate(pipeline, questions))
+    rows = asyncio.run(evaluate(pipeline, questions, judge=judge))
     summary = summarize(rows)
     fingerprint = pipeline.retriever.store.fingerprint
     meta = {
@@ -268,7 +347,10 @@ def main(argv: list[str] | None = None) -> int:
         "git_commit": git_commit(),
         "fingerprint": fingerprint,
         "prompt_version": pipeline.s.prompt_version,
-        "llm": "extractive-fake",
+        "llm": settings.llm_model if args.llm == "real" else "extractive-fake",
+        "judge_model": judge.model_name if judge else None,
+        "judge_prompt_version": judge.version if judge else None,
+        "golden_hash": file_digest(args.golden),
         "embedder": pipeline.retriever.embedder.name,
         "date": datetime.now(UTC).strftime("%Y-%m-%d"),
     }
