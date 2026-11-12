@@ -85,3 +85,7 @@ yarn-error.log*
 *.swo
 .DS_Store
 Thumbs.db
+
+# generated eval runs (keep .gitkeep)
+eval/runs/*
+!eval/runs/.gitkeep

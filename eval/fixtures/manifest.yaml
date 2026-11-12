@@ -1,0 +1,5 @@
+documents:
+  - {doc_id: sample_penal_code, title: Sample Penal Code 2024, doc_type: statute, domain: legal, path: corpus/sample_penal_code.txt, source_type: text, status: in_force}
+  - {doc_id: sample_old_code, title: Old Sample Code 1960, doc_type: statute, domain: legal, path: corpus/sample_old_code.txt, source_type: text, status: superseded, superseded_by: sample_penal_code}
+  - {doc_id: sample_kyc_direction, title: Sample Master Direction on KYC, doc_type: master_direction, domain: banking, path: corpus/sample_kyc_direction.txt, source_type: text}
+  - {doc_id: sample_judgment, title: Sample Citizen v. State of Samples, doc_type: judgment, domain: legal, authority_or_court: Supreme Court of Sampleland, path: corpus/sample_judgment.txt, source_type: text}

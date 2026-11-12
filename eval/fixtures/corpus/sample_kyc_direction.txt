@@ -1,0 +1,13 @@
+SAMPLE MASTER DIRECTION ON KYC
+
+1. Customer Identification
+
+Banks shall obtain officially valid documents to verify the identity and address of every new customer before opening an account.
+
+2. Periodic Updation
+
+Banks shall carry out periodic updation of KYC records. For low risk customers updation is required once in ten years, for medium risk customers once in eight years, and for high risk customers once in two years.
+
+3. Complaints and Ombudsman
+
+A customer who is not satisfied with the response of the bank to a complaint within thirty days may approach the Banking Ombudsman.

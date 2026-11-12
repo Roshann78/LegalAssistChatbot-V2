@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run ruff check .
+      - run: uv run pytest -q
+      - name: Eval smoke test (regression gate on fixture corpus)
+        run: >
+          uv run python -m legal_rag.eval run --config G1_prompt_v2
+          --golden eval/golden/smoke.jsonl --data-dir eval/fixtures
+          --manifest eval/fixtures/manifest.yaml --embedder hashing-512
+          --out eval/runs --min hit@5=0.9 mrr=0.8 abstention_acc=0.9 citation_valid=0.9
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-smoke-report
+          path: eval/runs
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t legal-rag:ci .

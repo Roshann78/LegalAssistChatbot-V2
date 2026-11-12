@@ -60,10 +60,25 @@ class Settings(BaseSettings):
     retrieval_top_k: int = Field(default=5, ge=1, le=100)
     retrieval_score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
 
+    retrieval_candidates: int = Field(default=30, ge=1, le=500)
+    retrieval_per_doc_cap: int = Field(default=3, ge=1, le=50)
+    abstain_threshold: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Abstain if best dense score is below this"
+    )
+    chunk_strategy: str = Field(default="auto", description="auto|s0|s1|s2|s3")
+    chunk_size: int = Field(default=800, ge=100, le=8000)
+    chunk_overlap: int = Field(default=150, ge=0, le=2000)
+    prompt_version: str = Field(default="v2")
+    history_turns: int = Field(default=4, ge=0, le=20)
+
     # ── Paths ────────────────────────────────────────────────────────────
     data_dir: Path = Field(default=Path("data"))
     processed_dir: Path = Field(default=Path("data/processed"))
     eval_dir: Path = Field(default=Path("eval"))
+    manifest_path: Path = Field(default=Path("data/manifest.yaml"))
+    index_path: Path = Field(default=Path("data/processed/index.json"))
+    mappings_path: Path = Field(default=Path("data/mappings/ipc_to_bns.json"))
+    feedback_path: Path = Field(default=Path("data/processed/feedback.jsonl"))
 
     # ── API & Logging ────────────────────────────────────────────────────
     api_host: str = Field(default="127.0.0.1")
@@ -74,6 +89,8 @@ class Settings(BaseSettings):
     # ── Limits ───────────────────────────────────────────────────────────
     max_question_length: int = Field(default=1000, ge=10, le=10000)
     rate_limit_rpm: int = Field(default=60, ge=1)
+    max_body_bytes: int = Field(default=1_000_000, ge=1024)
+    admin_api_key: SecretStr = Field(default=SecretStr(""), description="Admin endpoint key")
 
     # ── Validators ───────────────────────────────────────────────────────
 

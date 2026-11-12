@@ -1,0 +1,8 @@
+{"id": "q01", "question": "What does Section 3 say about theft?", "category": "section_lookup", "gold_doc_ids": ["sample_penal_code"], "gold_locations": ["Section 3"]}
+{"id": "q02", "question": "What is the punishment for theft?", "category": "conceptual", "gold_doc_ids": ["sample_penal_code"], "gold_locations": ["Section 4"]}
+{"id": "q03", "question": "How often must KYC be updated for high risk customers?", "category": "banking_procedural", "gold_doc_ids": ["sample_kyc_direction"], "domain": "banking"}
+{"id": "q04", "question": "Must the grounds of arrest be communicated to the arrested person?", "category": "case_law", "gold_doc_ids": ["sample_judgment"]}
+{"id": "q05", "question": "What is the meaning of movable property?", "category": "definitions", "gold_doc_ids": ["sample_penal_code"]}
+{"id": "q06", "question": "What is the complaint route to the Banking Ombudsman?", "category": "banking_procedural", "gold_doc_ids": ["sample_kyc_direction"]}
+{"id": "q07", "question": "Give me a recipe for chocolate cake with frosting", "category": "out_of_scope", "answerable": false}
+{"id": "q08", "question": "Who won the cricket world cup final in 2011 against Sri Lanka?", "category": "out_of_scope", "answerable": false}
