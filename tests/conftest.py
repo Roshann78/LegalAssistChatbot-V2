@@ -28,6 +28,9 @@ def settings(tmp_path) -> Settings:
             embedding_model="hashing-512",
             abstain_threshold=0.2,
             index_path=tmp_path / "index.json",
+            processed_dir=tmp_path / "processed",
+            embedding_cache_path=tmp_path / "cache" / "emb.sqlite",
+            qdrant_path=tmp_path / "qdrant",
             feedback_path=tmp_path / "feedback.jsonl",
             admin_api_key="admin-secret-for-tests",  # pragma: allowlist secret
         )

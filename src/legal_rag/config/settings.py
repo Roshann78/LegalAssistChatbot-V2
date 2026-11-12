@@ -68,6 +68,14 @@ class Settings(BaseSettings):
     chunk_strategy: str = Field(default="auto", description="auto|s0|s1|s2|s3")
     chunk_size: int = Field(default=800, ge=100, le=8000)
     chunk_overlap: int = Field(default=150, ge=0, le=2000)
+    chunk_max_tokens: int = Field(default=256, ge=16, le=8192)
+    contextual_prefix: bool = True
+    low_text_chars: int = Field(default=50, ge=1)
+    vector_store_backend: str = Field(default="memory", description="memory|qdrant")
+    qdrant_url: str = Field(default="", description="Qdrant server URL; empty = local mode")
+    qdrant_path: Path = Field(default=Path("data/processed/qdrant"))
+    qdrant_collection: str = Field(default="legal_rag")
+    embedding_cache_path: Path = Field(default=Path("data/cache/embeddings.sqlite"))
     prompt_version: str = Field(default="v2")
     history_turns: int = Field(default=4, ge=0, le=20)
 
@@ -100,6 +108,14 @@ class Settings(BaseSettings):
         allowed = {"groq"}
         if v.lower() not in allowed:
             msg = f"Unsupported LLM provider '{v}'. Allowed: {allowed}"
+            raise ValueError(msg)
+        return v.lower()
+
+    @field_validator("vector_store_backend")
+    @classmethod
+    def validate_backend(cls, v: str) -> str:
+        if v.lower() not in {"memory", "qdrant"}:
+            msg = f"Invalid vector_store_backend '{v}'. Allowed: memory, qdrant"
             raise ValueError(msg)
         return v.lower()
 

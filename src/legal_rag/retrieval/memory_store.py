@@ -22,6 +22,7 @@ class FingerprintMismatchError(RuntimeError):
 class InMemoryVectorStore(VectorStore):
     def __init__(self, fingerprint: str | None = None) -> None:
         self.fingerprint = fingerprint
+        self.path: Path | None = None
         self._chunks: dict[str, Chunk] = {}
         self._vectors: dict[str, list[float]] = {}
 
@@ -51,6 +52,24 @@ class InMemoryVectorStore(VectorStore):
             del self._chunks[cid]
             del self._vectors[cid]
         return len(ids)
+
+    def delete_except(self, doc_id: str, keep_chunk_ids: set[str]) -> int:
+        stale = [
+            cid
+            for cid, c in self._chunks.items()
+            if c.doc_id == doc_id and cid not in keep_chunk_ids
+        ]
+        for cid in stale:
+            del self._chunks[cid]
+            del self._vectors[cid]
+        return len(stale)
+
+    def persist(self) -> None:
+        if self.path is not None:
+            self.save(self.path)
+
+    def chunk_type_counts(self) -> dict[str, int]:
+        return dict(Counter(c.metadata.get("chunk_type") for c in self._chunks.values()))
 
     def clear(self) -> None:
         self._chunks.clear()

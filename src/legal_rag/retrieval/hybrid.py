@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from legal_rag.retrieval.base import Embedder
-from legal_rag.retrieval.memory_store import InMemoryVectorStore
+from legal_rag.retrieval.base import Embedder, VectorStore
 from legal_rag.retrieval.types import Filters, SearchResult
 
 
@@ -43,7 +42,7 @@ class Retriever:
     def __init__(
         self,
         embedder: Embedder,
-        store: InMemoryVectorStore,
+        store: VectorStore,
         *,
         mode: str = "hybrid",
         candidates: int = 30,

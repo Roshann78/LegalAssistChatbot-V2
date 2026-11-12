@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.27.0",
     "pyyaml>=6.0",
     "pymupdf>=1.24.0",
+    "qdrant-client>=1.9.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +37,8 @@ packages = ["src/legal_rag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = ["slow: needs real models or services (excluded by default)"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

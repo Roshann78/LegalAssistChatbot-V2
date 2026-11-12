@@ -1,4 +1,4 @@
-.PHONY: setup test lint format run check clean ingest reindex eval-smoke eval-dev eval-test up down
+.PHONY: ingest-check setup test lint format run check clean ingest reindex eval-smoke eval-dev eval-test up down
 
 setup:
 	uv sync
@@ -41,3 +41,6 @@ up:
 
 down:
 	docker compose down
+
+ingest-check:
+	uv run python -m legal_rag.ingestion --yes report --out docs/ingestion_report.md

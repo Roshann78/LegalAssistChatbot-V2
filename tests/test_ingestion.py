@@ -172,12 +172,12 @@ def test_cli_validate_reindex_verify_list(settings, capsys):
     )
     assert cli_run(["validate"], s) == 0
     assert cli_run(["verify"], s) == 1  # nothing indexed yet
-    assert cli_run(["reindex", "--all"], s) == 0
+    assert cli_run(["--yes", "reindex", "--all"], s) == 0
     assert cli_run(["verify"], s) == 0
     assert cli_run(["add", "sample_judgment"], s) == 0
     out = capsys.readouterr().out
     assert "sample_judgment: skipped" in out
-    assert cli_run(["remove", "sample_judgment"], s) == 0
+    assert cli_run(["--yes", "remove", "sample_judgment"], s) == 0
     assert cli_run(["verify"], s) == 1
     assert cli_run(["add", "nope"], s) == 2
     assert cli_run(["--dry-run", "list"], s) == 0

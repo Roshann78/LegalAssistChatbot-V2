@@ -4,7 +4,7 @@ Short ADRs. "Evidence" is only filled where a real experiment exists; none exist
 
 | # | Decision | Why | Status / evidence |
 |---|---|---|---|
-| 1 | In-memory vector store with JSON persistence behind a `VectorStore` interface | Zero-dependency local run and fast tests; Qdrant adapter can replace it | Qdrant **deferred** (not built); no benchmark |
+| 1 | In-memory vector store with JSON persistence behind a `VectorStore` interface | Zero-dependency local run and fast tests; Qdrant adapter implemented (`VECTOR_STORE_BACKEND=qdrant`); sparse = hashed term counts + server-side IDF | Tested in-process only; no benchmark |
 | 2 | PyMuPDF parser | Light, fast, page-aware; OCR for scanned PDFs is **not implemented** (low-text pages are flagged only) | Docling comparison **not run** |
 | 3 | Chunking per doc type (S1 statutes, S2 judgments, S3 headings) with S0 baseline | Keeps sections/provisos and numbered paragraphs intact; unit-tested boundaries | Gain over S0 **unmeasured** on real data |
 | 4 | Contextual prefix is embed-only | Better matching without polluting displayed/generated text | Unmeasured |

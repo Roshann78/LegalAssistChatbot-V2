@@ -39,8 +39,8 @@ from legal_rag.retrieval.base import (
     VectorStore,
 )
 from legal_rag.retrieval.embedder import build_embedder
+from legal_rag.retrieval.factory import build_store
 from legal_rag.retrieval.hybrid import Retriever
-from legal_rag.retrieval.memory_store import InMemoryVectorStore
 from legal_rag.retrieval.query import MappingTable
 
 logger = logging.getLogger("legal_rag.api")
@@ -106,11 +106,16 @@ def create_app(
         # 3. Initialize embedder, vector store and pipeline (real ones only if an index exists)
         active_embedder, active_store = embedder, vector_store
         load_failed = False
-        if active_store is None and app_settings.index_path.exists():
+        has_index = (
+            app_settings.index_path.exists()
+            if app_settings.vector_store_backend == "memory"
+            else app_settings.qdrant_path.exists() or bool(app_settings.qdrant_url)
+        )
+        if active_store is None and has_index:
             try:
-                active_store = InMemoryVectorStore.load(app_settings.index_path)
                 if active_embedder is None:
                     active_embedder = build_embedder(app_settings.embedding_model)
+                active_store = build_store(app_settings, active_embedder)
             except Exception as exc:  # model/index failure must not crash startup
                 logger.error("Failed to load index/embedder: %s", exc)
                 active_store, active_embedder = None, None
@@ -118,11 +123,7 @@ def create_app(
         app.state.embedder = active_embedder or PlaceholderEmbedder(ready=not load_failed)
         app.state.vector_store = active_store or PlaceholderVectorStore(ready=not load_failed)
         app.state.pipeline = pipeline
-        if (
-            pipeline is None
-            and isinstance(active_store, InMemoryVectorStore)
-            and active_embedder is not None
-        ):
+        if pipeline is None and active_store is not None and active_embedder is not None:
             app.state.pipeline = RAGPipeline(
                 Retriever(
                     active_embedder,

@@ -57,6 +57,36 @@ class VectorStore(ABC):
     def list_docs(self) -> list[str]:
         raise NotImplementedError
 
+    # Full store contract used by indexing and retrieval (see memory_store / qdrant_store).
+    fingerprint: str | None = None
+
+    def check_fingerprint(self, fingerprint: str) -> None:
+        raise NotImplementedError
+
+    def delete_except(self, doc_id: str, keep_chunk_ids: set[str]) -> int:
+        raise NotImplementedError
+
+    def doc_hashes(self) -> dict[str, str]:
+        raise NotImplementedError
+
+    def get_chunks(self, doc_id: str) -> list[Chunk]:
+        raise NotImplementedError
+
+    def clear(self) -> None:
+        raise NotImplementedError
+
+    def persist(self) -> None:
+        raise NotImplementedError
+
+    def chunk_type_counts(self) -> dict[str, int]:
+        raise NotImplementedError
+
+    def dense_search(self, dense: list[float], filters: Filters | None, k: int):
+        raise NotImplementedError
+
+    def sparse_search(self, query: str, filters: Filters | None, k: int):
+        raise NotImplementedError
+
 
 class PlaceholderEmbedder(Embedder):
     """Placeholder embedder (readiness tests only)."""

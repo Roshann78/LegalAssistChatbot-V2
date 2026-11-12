@@ -161,7 +161,7 @@ def test_app_loads_persisted_index_and_serves_end_to_end(settings):
     s = settings.model_copy(
         update={"manifest_path": FIXTURES / "manifest.yaml", "data_dir": FIXTURES}
     )
-    assert cli_run(["reindex", "--all"], s) == 0
+    assert cli_run(["--yes", "reindex", "--all"], s) == 0
     app = create_app(s, llm_client=ExtractiveFakeLLM())
     with TestClient(app) as c:
         assert c.get("/ready").status_code == 200

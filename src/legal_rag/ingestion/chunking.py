@@ -29,6 +29,24 @@ def strategy_for(doc_type: str, configured: str = "auto") -> str:
     return _DOCTYPE_STRATEGY.get(doc_type, "s0") if configured == "auto" else configured
 
 
+def approx_tokens(text: str) -> int:
+    """Default token counter (~4 chars/token). Inject a real tokenizer for production."""
+    return -(-len(text) // 4)
+
+
+_TOC_LINE = re.compile(r"(?:\.{2,}|\s{2,}|\s)\d{1,4}\s*$")
+
+
+def is_toc_page(text: str) -> bool:
+    """Table-of-contents / arrangement-of-sections page: mostly short lines ending in numbers."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 6:
+        return False
+    numbered = sum(1 for ln in lines if _TOC_LINE.search(ln) and len(ln) < 120)
+    marker = bool(re.search(r"\b(contents|arrangement of sections)\b", text[:300], re.I))
+    return numbered / len(lines) >= (0.5 if marker else 0.75)
+
+
 @dataclass
 class _Seg:
     start: int
@@ -162,6 +180,26 @@ def _segments_s2(t: _Text, size: int, overlap: int) -> list[_Seg]:
     return out
 
 
+def _enforce_max(
+    t: _Text, segs: list[_Seg], count: Callable[[str], int], max_tokens: int, overlap: int
+) -> list[_Seg]:
+    out: list[_Seg] = []
+    for s in segs:
+        if count(t.full[s.start : s.end].strip()) <= max_tokens:
+            out.append(s)
+            continue
+        size = s.end - s.start
+        pieces = [s]
+        while size > 20:
+            size = int(size * 0.75)
+            spans = fixed_spans(t.full, s.start, s.end, size, min(overlap, size // 5))
+            pieces = [_Seg(a, b, s.section, s.heading, s.para) for a, b in spans]
+            if all(count(t.full[p.start : p.end].strip()) <= max_tokens for p in pieces):
+                break
+        out.extend(pieces)
+    return out
+
+
 _STRATEGIES: dict[str, Callable[[_Text, int, int], list[_Seg]]] = {
     "s0": _segments_s0,
     "s1": _segments_s1,
@@ -178,12 +216,17 @@ def chunk_document(
     size: int = 800,
     overlap: int = 150,
     contextual_prefix: bool = True,
+    count_tokens: Callable[[str], int] = approx_tokens,
+    max_tokens: int | None = None,
 ) -> list[Chunk]:
     """Chunk a document; every chunk carries the document metadata plus chunk-level fields."""
     if strategy not in _STRATEGIES:
         raise ValueError(f"unknown chunk strategy {strategy!r}")
-    t = _Text(pages)
+    kept = [Page(p.page, "" if is_toc_page(p.text) else p.text, p.low_text) for p in pages]
+    t = _Text(kept)
     segs = _STRATEGIES[strategy](t, size, overlap)
+    if max_tokens:
+        segs = _enforce_max(t, segs, count_tokens, max_tokens, overlap)
     doc_id, title = doc_meta["doc_id"], doc_meta.get("title", doc_meta["doc_id"])
     chunks = []
     for i, s in enumerate(segs):
@@ -200,6 +243,9 @@ def chunk_document(
             "page_end": t.page_at(max(s.end - 1, s.start)),
             "paragraph_no": s.para,
             "chunk_type": strategy,
+            "token_count": count_tokens(text),
+            "strategy_id": strategy,
+            "strategy_version": STRATEGY_VERSIONS[strategy],
         }
         prefix = " > ".join(heading_path) + "\n" if contextual_prefix else ""
         chunks.append(Chunk(meta["chunk_id"], doc_id, text, prefix + text if prefix else "", meta))

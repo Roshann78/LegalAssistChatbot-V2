@@ -13,7 +13,9 @@ with validated passage-level citations, abstention, SSE streaming, an eval harne
 | Config, LLM client (Groq) with retries/backoff, sessions with TTL + cap, SSE streaming, request IDs | done, tested |
 | Typed manifest schema, `validate`, draft helper, hash-based idempotent ingestion CLI | done, tested |
 | Parser (PyMuPDF + text), header/footer cleaning, chunkers S0–S3 with contextual prefix | done, tested |
-| In-memory vector store (dense + BM25, filters, fingerprint guard, JSON persistence) | done, tested |
+| Vector store interface with in-memory and **Qdrant** adapters (dense + sparse, payload filters, fingerprint guard) | done, tested on Qdrant's in-process mode; a Docker/server Qdrant is untested |
+| Normalized per-document JSON, ToC exclusion, token-limited chunks, on-disk embedding cache, safe-order replace | done, tested |
+| CLI: validate, draft, parse, add, update, remove, list, reindex, verify, status, stats, report, lookup | done, tested |
 | Hybrid retrieval (RRF), per-doc cap, query understanding, old→new mapping lookup | done, tested |
 | Versioned prompts, citation validation, status-aware context, confidence gate | done, tested |
 | `/v1/ask` (SSE: token, citations, abstained, done, error), `/v1/stats`, `/v1/feedback`, admin delete | done, tested |
@@ -29,7 +31,8 @@ with validated passage-level citations, abstention, SSE streaming, an eval harne
   must be authored and verified against real PDFs.
 * **Measured results**: no B0→final ablation exists; `eval/experiment_log.md` is empty on purpose. No claim in
   this repo is backed by a real-corpus experiment yet.
-* Not built: Qdrant adapter, cross-encoder reranker, LLM-judge faithfulness metrics, Langfuse tracing,
+* Phase 2 gaps: the parser comparison (`docs/parser_comparison.md`) was not run (needs your 5 real PDFs; PyMuPDF is the only parser), OCR is not implemented (low-text pages are flagged), no real-model embedder was installed or tested (`slow` marker exists, no slow tests yet), and `docs/ingestion_report.md` / the human acceptance check need the real corpus (`make ingest-check`).
+* Not built: cross-encoder reranker, LLM-judge faithfulness metrics, Langfuse tracing,
   `/metrics`, document-upload chat, frontend, `/v1/documents/upload`, `/stats` at the root path (it is `/v1/stats`).
 * Embedding quality: the offline `hashing-512` embedder is for tests/CI. For real use install the extra
   (`uv sync --extra embeddings`) and set `EMBEDDING_MODEL=all-MiniLM-L6-v2` (or a model you choose).
@@ -49,7 +52,10 @@ Index your own corpus and serve it:
 ```bash
 uv run python -m legal_rag.ingestion draft      # draft manifest entries from data/raw
 uv run python -m legal_rag.ingestion validate
-uv run python -m legal_rag.ingestion reindex --all
+uv run python -m legal_rag.ingestion --yes reindex --all
+uv run python -m legal_rag.ingestion --yes report      # writes docs/ingestion_report.md
+uv run python -m legal_rag.ingestion lookup <doc_id> "Section 4"
+# Qdrant: VECTOR_STORE_BACKEND=qdrant (local path mode, or QDRANT_URL for a server)
 uv run uvicorn legal_rag.api.main:create_app --factory
 curl -N -X POST localhost:8000/v1/ask -H 'content-type: application/json' \
      -d '{"question":"What is the punishment for theft?"}'

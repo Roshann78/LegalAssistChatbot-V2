@@ -7,6 +7,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -72,7 +73,10 @@ def build_pipeline(
     )
     embedder = build_embedder(s.embedding_model)
     store = InMemoryVectorStore()
-    Indexer(s, embedder, store, base_dir=data_dir).index_all(load_manifest(manifest))
+    with tempfile.TemporaryDirectory() as tmp:  # eval never writes into data/processed
+        Indexer(s, embedder, store, base_dir=data_dir, processed_dir=Path(tmp)).index_all(
+            load_manifest(manifest)
+        )
     retriever = Retriever(
         embedder,
         store,
