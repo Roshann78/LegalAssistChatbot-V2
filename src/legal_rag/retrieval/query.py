@@ -74,21 +74,56 @@ def rewrite_followup(question: str, history: list[tuple[str, str]]) -> str:
     return question
 
 
+_BANKING = frozenset(
+    "bank banks banking rbi loan loans kyc account accounts deposit deposits ombudsman mudra "
+    "pmjdy interest credit cheque atm nbfc lending debit card upi remittance".split()
+)
+_LEGAL = frozenset(
+    "section article ipc bns crpc bnss iea bsa court judgment offence punishment bail "
+    "constitution act supreme fir arrest trial evidence petition appeal rti".split()
+)
+
+
+def route_domain(question: str) -> str | None:
+    """Keyword router: returns 'banking'/'legal' only when one side clearly dominates."""
+    words = {w.lower() for w in re.findall(r"[A-Za-z]+", question)}
+    b, g = len(words & _BANKING), len(words & _LEGAL)
+    if b > 0 and b >= 2 * g:
+        return "banking"
+    if g > 0 and g >= 2 * b:
+        return "legal"
+    return None
+
+
+def section_labels(refs: list[tuple[str, str]]) -> tuple[str, ...]:
+    """Chunk-metadata labels for detected references ('section','66A') -> 'Section 66A'."""
+    return tuple(
+        sorted({f"{'Article' if k == 'article' else 'Section'} {n.upper()}" for k, n in refs})
+    )
+
+
 def understand(
     question: str,
     history: list[tuple[str, str]] | None = None,
     mapping: MappingTable | None = None,
+    *,
+    rewrite: bool = True,
+    refs: bool = True,
+    abbrev: bool = True,
+    use_mapping: bool = True,
 ) -> UnderstoodQuery:
-    standalone = rewrite_followup(question, history or [])
-    refs = [(m.group(1).lower().rstrip("."), m.group(2)) for m in _REF_RE.finditer(standalone)]
+    standalone = rewrite_followup(question, history or []) if rewrite else question
+    found = [(m.group(1).lower().rstrip("."), m.group(2)) for m in _REF_RE.finditer(standalone)]
     words = {w.lower() for w in re.findall(r"[A-Za-z]+", standalone)}
-    expansion = " ".join(full for ab, full in ABBREVIATIONS.items() if ab in words)
+    expansion = (
+        " ".join(full for ab, full in ABBREVIATIONS.items() if ab in words) if abbrev else ""
+    )
     mapped: list[dict] = []
     acts = [a.lower() for a in _ACT_RE.findall(standalone)]
-    if mapping and refs and acts:
-        for _, num in refs:
+    if use_mapping and mapping and found and acts:
+        for _, num in found:
             for act in acts:
                 mapped.extend(mapping.lookup(act, num))
     if mapped:
         expansion += " " + " ".join(f"{m['new_act']} Section {m['new_section']}" for m in mapped)
-    return UnderstoodQuery(question, standalone, refs, expansion.strip(), mapped)
+    return UnderstoodQuery(question, standalone, found if refs else [], expansion.strip(), mapped)

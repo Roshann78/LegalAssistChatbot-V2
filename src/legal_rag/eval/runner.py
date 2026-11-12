@@ -24,25 +24,112 @@ from legal_rag.eval.golden import (
     verify_test_lock,
 )
 from legal_rag.eval.judge import Judge
+from legal_rag.eval.study import latest_runs, render_ablation, render_bakeoff, run_bakeoff
 from legal_rag.generation.pipeline import Answer, RAGPipeline
 from legal_rag.ingestion.indexer import Indexer
 from legal_rag.ingestion.manifest import load_manifest
 from legal_rag.llm import GroqClient, LLMClient, LLMResponse
 from legal_rag.retrieval.embedder import build_embedder
-from legal_rag.retrieval.hybrid import Retriever
+from legal_rag.retrieval.factory import build_retriever
 from legal_rag.retrieval.memory_store import InMemoryVectorStore
 from legal_rag.retrieval.query import MappingTable
 
-# name -> settings overrides + retrieval mode. B0 is the baseline; later rows change one thing.
+# Each experiment config is a dict of Settings overrides, so the production pipeline and the
+# eval runner share one code path. One change per row relative to its predecessor.
+_B0 = {
+    "retrieval_mode": "dense",
+    "chunk_strategy": "s0",
+    "prompt_version": "v1",
+    "contextual_prefix": False,
+    "qu_rewrite": False,
+    "qu_refs": False,
+    "qu_abbrev": False,
+    "qu_mapping": False,
+}
 CONFIGS: dict[str, dict] = {
-    "B0_baseline": {"mode": "dense", "chunk_strategy": "s0", "prompt_version": "v1"},
-    "B1_structure": {"mode": "dense", "chunk_strategy": "auto", "prompt_version": "v1"},
-    "B3_hybrid": {"mode": "hybrid", "chunk_strategy": "auto", "prompt_version": "v1"},
-    "G1_prompt_v2": {
-        "mode": "hybrid",
+    "B0_baseline": _B0,
+    "B1_structure": {**_B0, "chunk_strategy": "auto"},
+    "B1b_prefix": {**_B0, "chunk_strategy": "auto", "contextual_prefix": True},
+    "B1c_parent": {
+        **_B0,
         "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "parent_expand": True,
+    },
+    "B3_hybrid": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+    },
+    "B4_filters": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "domain_router": True,
+    },
+    "B5_rerank": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "rerank_strategy": "lexical",
+    },
+    "B6a_rewrite": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "qu_rewrite": True,
+    },
+    "B6b_refs": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "qu_refs": True,
+    },
+    "B6c_abbrev": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "qu_abbrev": True,
+    },
+    "B6d_mapping": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "qu_refs": True,
+        "qu_mapping": True,
+    },
+    "G1_prompt_v2": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "qu_rewrite": True,
+        "qu_refs": True,
+        "qu_abbrev": True,
+        "qu_mapping": True,
         "prompt_version": "v2",
         "abstain_threshold": 0.2,
+    },
+    # PROVISIONAL: a plausible composition, NOT chosen from data. Re-define it from your own
+    # ablation (eval ablation) before running it once on the frozen test split.
+    "R_final": {
+        **_B0,
+        "chunk_strategy": "auto",
+        "contextual_prefix": True,
+        "retrieval_mode": "hybrid",
+        "domain_router": True,
+        "rerank_strategy": "lexical",
+        "qu_rewrite": True,
+        "qu_refs": True,
+        "qu_abbrev": True,
+        "qu_mapping": True,
     },
 }
 
@@ -70,28 +157,14 @@ class ExtractiveFakeLLM(LLMClient):
 def build_pipeline(
     config: str, settings: Settings, llm: LLMClient, data_dir: Path, manifest: Path
 ) -> RAGPipeline:
-    cfg = CONFIGS[config]
-    s = settings.model_copy(
-        update={
-            "chunk_strategy": cfg["chunk_strategy"],
-            "prompt_version": cfg["prompt_version"],
-            "abstain_threshold": cfg.get("abstain_threshold", 0.0),
-        }
-    )
+    s = settings.model_copy(update=CONFIGS[config])
     embedder = build_embedder(s.embedding_model)
     store = InMemoryVectorStore()
     with tempfile.TemporaryDirectory() as tmp:  # eval never writes into data/processed
         Indexer(s, embedder, store, base_dir=data_dir, processed_dir=Path(tmp)).index_all(
             load_manifest(manifest)
         )
-    retriever = Retriever(
-        embedder,
-        store,
-        mode=cfg["mode"],
-        candidates=s.retrieval_candidates,
-        per_doc_cap=s.retrieval_per_doc_cap,
-    )
-    return RAGPipeline(retriever, llm, s, MappingTable())
+    return RAGPipeline(build_retriever(s, embedder, store), llm, s, MappingTable())
 
 
 def approx_tokens(text: str) -> int:
@@ -310,6 +383,16 @@ def main(argv: list[str] | None = None) -> int:
         metavar="METRIC=VALUE",
         help="fail (exit 1) if overall metric is below value",
     )
+    bo = sub.add_parser("bakeoff", help="retrieval-only embedding model comparison")
+    bo.add_argument("--models", nargs="+", required=True)
+    bo.add_argument("--golden", type=Path, default=Path("eval/golden/dev.jsonl"))
+    bo.add_argument("--data-dir", type=Path, default=Path("data"))
+    bo.add_argument("--manifest", type=Path, default=Path("data/manifest.yaml"))
+    ab = sub.add_parser("ablation", help="B0 -> final table from saved runs")
+    ab.add_argument("--runs", type=Path, default=Path("eval/runs"))
+    ab.add_argument("--split", default="dev", choices=["dev", "test"])
+    ab.add_argument("--order", nargs="+", default=list(CONFIGS))
+    ab.add_argument("--out", type=Path, default=None)
     fz = sub.add_parser("freeze", help="freeze the test split (records its hash)")
     fz.add_argument("--golden", type=Path, default=Path("eval/golden/test.jsonl"))
     c = sub.add_parser("compare")
@@ -317,6 +400,18 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("run_b", type=Path)
     args = ap.parse_args(argv)
 
+    if args.cmd == "bakeoff":
+        qs = load_golden(args.golden, "dev")
+        print(
+            render_bakeoff(run_bakeoff(args.models, qs, args.data_dir, args.manifest, Settings()))
+        )
+        return 0
+    if args.cmd == "ablation":
+        table = render_ablation(latest_runs(args.runs, args.split), args.order)
+        print(table)
+        if args.out:
+            args.out.write_text(table, encoding="utf-8")
+        return 0
     if args.cmd == "freeze":
         print(f"frozen {args.golden}: {freeze_test_split(args.golden)}")
         return 0

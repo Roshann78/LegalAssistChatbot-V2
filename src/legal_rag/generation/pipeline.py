@@ -5,14 +5,20 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from legal_rag.config.settings import Settings
 from legal_rag.generation.citations import Citation, resolve_citations
 from legal_rag.generation.prompts import build_messages
 from legal_rag.llm import LLMClient
 from legal_rag.retrieval.hybrid import Retriever
-from legal_rag.retrieval.query import MappingTable, UnderstoodQuery, understand
+from legal_rag.retrieval.query import (
+    MappingTable,
+    UnderstoodQuery,
+    route_domain,
+    section_labels,
+    understand,
+)
 from legal_rag.retrieval.types import Filters, SearchResult
 
 _OLD_ACTS = {"ipc", "crpc", "iea"}
@@ -60,15 +66,47 @@ class RAGPipeline:
     ) -> Prepared:
         """Everything before generation. CPU-bound: call via a thread from async code."""
         t0 = time.perf_counter()
-        uq = understand(question, (history or [])[-self.s.history_turns :], self.mapping)
+        uq = understand(
+            question,
+            (history or [])[-self.s.history_turns :],
+            self.mapping,
+            rewrite=self.s.qu_rewrite,
+            refs=self.s.qu_refs,
+            abbrev=self.s.qu_abbrev,
+            use_mapping=self.s.qu_mapping,
+        )
         t1 = time.perf_counter()
         wants_old = any(w in uq.standalone.lower().split() for w in _OLD_ACTS)
-        filters = Filters(domain=domain, status=None if wants_old else ("in_force", "amended"))
+        status = None if wants_old else ("in_force", "amended")
+        routed = domain is None and self.s.domain_router
+        if routed:
+            domain = route_domain(uq.standalone)
+        filters = Filters(domain=domain, status=status)
+        k = self.s.retrieval_top_k
         results = self.retriever.retrieve(
-            uq.standalone, k=self.s.retrieval_top_k, filters=filters, extra_terms=uq.expansion
+            uq.standalone, k=k, filters=filters, extra_terms=uq.expansion
         )
+        if not results and routed and domain:  # a wrong route must never cause a miss
+            filters = Filters(status=status)
+            results = self.retriever.retrieve(
+                uq.standalone, k=k, filters=filters, extra_terms=uq.expansion
+            )
+        rerank_ms = self.retriever.last_rerank_ms
+        if uq.references:  # exact section/article references: pin matching chunks first
+            exact = self.retriever.retrieve(
+                uq.standalone,
+                k=k,
+                filters=replace(filters, sections=section_labels(uq.references)),
+                extra_terms=uq.expansion,
+            )[:2]
+            exact_ids = {r.chunk_id for r in exact}
+            results = (exact + [r for r in results if r.chunk_id not in exact_ids])[:k]
         t2 = time.perf_counter()
-        timings = {"understand_ms": (t1 - t0) * 1e3, "retrieve_ms": (t2 - t1) * 1e3}
+        timings = {
+            "understand_ms": (t1 - t0) * 1e3,
+            "retrieve_ms": (t2 - t1) * 1e3,
+            "rerank_ms": rerank_ms,
+        }
         best = max((r.dense_score for r in results), default=0.0)
         if not results or best < self.s.abstain_threshold:
             return Prepared(uq, results, abstain=True, timings=timings)

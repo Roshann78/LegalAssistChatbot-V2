@@ -22,6 +22,7 @@ with validated passage-level citations, abstention, SSE streaming, an eval harne
 | Rate limiting, body-size limit, admin API key, prompt-injection delimiting | done, tested |
 | Eval: golden schema, retrieval/abstention/citation metrics, runner, compare, CI regression gate | done, tested on a **synthetic fixture corpus only** |
 | Golden authoring (draft → review → promote), test-split freeze lock, LLM-judge metrics, token/cost tracking | done, tested with fakes; **never run against a real LLM** |
+| Retrieval upgrades as switchable configs: parent-child, weighted hybrid, domain router, section pinning, reranker interface, QU component flags; bake-off + ablation tools | done, tested on the fixture only; **no experiment run, nothing kept/dropped yet** |
 | Dockerfile, compose, GitHub Actions CI | written; CI not yet run on GitHub |
 
 ## What is NOT done (needs your data / keys / services)

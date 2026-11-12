@@ -21,7 +21,7 @@ from legal_rag.retrieval.types import Chunk, Filters, SearchResult
 DENSE, SPARSE = "dense", "sparse"
 SPARSE_METHOD = "hashed-tf-idf-1"
 _NS = uuid.UUID("6f1c0e9a-0f64-4c5e-9d0e-0c1a2b3c4d5e")
-_KEYWORD_FIELDS = ("domain", "doc_type", "status", "doc_id", "chunk_id")
+_KEYWORD_FIELDS = ("domain", "doc_type", "status", "doc_id", "chunk_id", "section_or_article_no")
 
 
 def point_id(chunk_id: str) -> str:
@@ -49,6 +49,12 @@ def _filter(filters: Filters | None, must_not: list | None = None) -> models.Fil
                     key="doc_id", match=models.MatchAny(any=list(filters.doc_ids))
                 )
             )
+    if filters and filters.sections:
+        must.append(
+            models.FieldCondition(
+                key="section_or_article_no", match=models.MatchAny(any=list(filters.sections))
+            )
+        )
     if not must and not must_not:
         return None
     return models.Filter(must=must or None, must_not=must_not or None)

@@ -39,8 +39,7 @@ from legal_rag.retrieval.base import (
     VectorStore,
 )
 from legal_rag.retrieval.embedder import build_embedder
-from legal_rag.retrieval.factory import build_store
-from legal_rag.retrieval.hybrid import Retriever
+from legal_rag.retrieval.factory import build_retriever, build_store
 from legal_rag.retrieval.query import MappingTable
 
 logger = logging.getLogger("legal_rag.api")
@@ -125,12 +124,7 @@ def create_app(
         app.state.pipeline = pipeline
         if pipeline is None and active_store is not None and active_embedder is not None:
             app.state.pipeline = RAGPipeline(
-                Retriever(
-                    active_embedder,
-                    active_store,
-                    candidates=app_settings.retrieval_candidates,
-                    per_doc_cap=app_settings.retrieval_per_doc_cap,
-                ),
+                build_retriever(app_settings, active_embedder, active_store),
                 app.state.llm_client,
                 app_settings,
                 MappingTable.load(app_settings.mappings_path),

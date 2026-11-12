@@ -23,3 +23,23 @@ def build_store(settings: Settings, embedder: Embedder) -> VectorStore:
         client = QdrantClient(path=str(settings.qdrant_path))
     dim = len(embedder.embed(["dimension probe"])[0])
     return QdrantVectorStore(client, settings.qdrant_collection, dim)
+
+
+def build_retriever(settings: Settings, embedder: Embedder, store: VectorStore):
+    """Retriever fully configured from settings (shared by the API and the eval runner)."""
+    from legal_rag.retrieval.hybrid import Retriever
+    from legal_rag.retrieval.rerank import build_reranker
+
+    return Retriever(
+        embedder,
+        store,
+        mode=settings.retrieval_mode,
+        candidates=settings.retrieval_candidates,
+        per_doc_cap=settings.retrieval_per_doc_cap,
+        dense_weight=settings.dense_weight,
+        sparse_weight=settings.sparse_weight,
+        reranker=build_reranker(settings.rerank_strategy, settings.rerank_model),
+        rerank_top_n=settings.rerank_top_n,
+        parent_expand=settings.parent_expand,
+        parent_max_chars=settings.parent_max_chars,
+    )

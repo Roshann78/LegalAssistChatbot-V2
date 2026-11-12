@@ -21,3 +21,15 @@ Short ADRs. "Evidence" is only filled where a real experiment exists; none exist
 ## Rejected or deferred
 Scraping, fine-tuning, Graph RAG, agents (Part 2), cloud deployment (Part 3), cross-encoder reranking and
 LLM-judge metrics (need models/keys and a real golden set), Langfuse tracing, upload chat, frontend.
+
+## Phase 4 (retrieval upgrades): built, not yet measured
+Every upgrade is a `Settings` switch and an experiment config in `eval/runner.py::CONFIGS`, differing from
+its predecessor in one knob (enforced by a test): chunking (B1), contextual prefix (B1b), parent-child (B1c),
+hybrid (B3), domain router (B4), rerank (B5), query-understanding components (B6a-d). Tools:
+`eval bakeoff --models ...` (retrieval-only embedding comparison) and `eval ablation` (B0 -> final table from
+saved runs). **No decision is made yet**: nothing has been run on a real corpus, so nothing is kept or dropped.
+* Reranker: a dependency-free lexical reranker (test/CI stand-in) and a lazy cross-encoder adapter that needs
+  `RERANK_MODEL` (no model is assumed). No hosted reranker.
+* `R_final` is a **provisional** composition, not chosen from data; redefine it from your ablation.
+* Multilingual (4.7): out of scope for now; no Hindi set exists. Revisit with a 10-question Hindi dev set.
+* Parent-child here = the hit plus its neighbouring chunks (same document, +/-1); overlapping parents are not merged.

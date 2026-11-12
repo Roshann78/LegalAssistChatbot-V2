@@ -79,6 +79,23 @@ class Settings(BaseSettings):
     judge_model: str = Field(default="", description="Pinned judge model id (required for --judge)")
     price_in_per_1k: float = Field(default=0.0, ge=0.0, description="USD per 1k prompt tokens")
     price_out_per_1k: float = Field(default=0.0, ge=0.0, description="USD per 1k output tokens")
+    retrieval_mode: str = Field(default="hybrid", description="dense|sparse|hybrid")
+    dense_weight: float = Field(default=1.0, ge=0.0)
+    sparse_weight: float = Field(default=1.0, ge=0.0)
+    rerank_strategy: str = Field(default="none", description="none|lexical|cross_encoder")
+    rerank_model: str = Field(
+        default="", description="Cross-encoder model name (strategy needs it)"
+    )
+    rerank_top_n: int = Field(
+        default=30, ge=1, le=200, description="Candidates fed to the reranker"
+    )
+    parent_expand: bool = Field(default=False, description="Return neighbouring-chunk context")
+    parent_max_chars: int = Field(default=2400, ge=200)
+    domain_router: bool = False
+    qu_rewrite: bool = True
+    qu_refs: bool = True
+    qu_abbrev: bool = True
+    qu_mapping: bool = True
     prompt_version: str = Field(default="v2")
     history_turns: int = Field(default=4, ge=0, le=20)
 
@@ -119,6 +136,22 @@ class Settings(BaseSettings):
     def validate_backend(cls, v: str) -> str:
         if v.lower() not in {"memory", "qdrant"}:
             msg = f"Invalid vector_store_backend '{v}'. Allowed: memory, qdrant"
+            raise ValueError(msg)
+        return v.lower()
+
+    @field_validator("retrieval_mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        if v.lower() not in {"dense", "sparse", "hybrid"}:
+            msg = f"Invalid retrieval_mode '{v}'. Allowed: dense, sparse, hybrid"
+            raise ValueError(msg)
+        return v.lower()
+
+    @field_validator("rerank_strategy")
+    @classmethod
+    def validate_rerank(cls, v: str) -> str:
+        if v.lower() not in {"none", "lexical", "cross_encoder"}:
+            msg = f"Invalid rerank_strategy '{v}'. Allowed: none, lexical, cross_encoder"
             raise ValueError(msg)
         return v.lower()
 

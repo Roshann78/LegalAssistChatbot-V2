@@ -45,6 +45,7 @@ class Filters:
     doc_type: str | None = None
     status: tuple[str, ...] | None = ("in_force", "amended")
     doc_ids: tuple[str, ...] | None = None
+    sections: tuple[str, ...] | None = None  # exact section/article labels, e.g. "Section 66A"
 
     def matches(self, meta: dict[str, Any]) -> bool:
         if self.domain and meta.get("domain") != self.domain:
@@ -53,4 +54,6 @@ class Filters:
             return False
         if self.status and meta.get("status", "in_force") not in self.status:
             return False
-        return not (self.doc_ids and meta.get("doc_id") not in self.doc_ids)
+        if self.doc_ids and meta.get("doc_id") not in self.doc_ids:
+            return False
+        return not (self.sections and meta.get("section_or_article_no") not in self.sections)
