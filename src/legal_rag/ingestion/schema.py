@@ -18,6 +18,7 @@ class DocType(StrEnum):
     scheme = "scheme"
     faq = "faq"
     mapping_table = "mapping_table"
+    report = "report"
 
 
 class Domain(StrEnum):

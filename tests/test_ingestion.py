@@ -184,3 +184,11 @@ def test_cli_validate_reindex_verify_list(settings, capsys):
     assert cli_run(["add", "nope"], s) == 2
     assert cli_run(["--dry-run", "list"], s) == 0
     assert cli_run(["stats"], s) == 0
+
+
+def test_report_doc_type_is_accepted_and_uses_heading_chunking(tmp_path):
+    f = tmp_path / "m.yaml"
+    entry = "  - {doc_id: fsr-2025, title: FSR, doc_type: report, domain: banking, path: x.pdf}"
+    f.write_text("documents:\n" + entry + "\n")
+    assert load_manifest(f)[0].doc_type.value == "report"
+    assert strategy_for("report") == "s3"

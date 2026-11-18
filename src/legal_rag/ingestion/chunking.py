@@ -22,6 +22,7 @@ _DOCTYPE_STRATEGY = {
     "master_direction": "s3",
     "faq": "s3",
     "mapping_table": "s3",
+    "report": "s3",
 }
 
 
