@@ -89,3 +89,8 @@ Thumbs.db
 # generated eval runs (keep .gitkeep)
 eval/runs/*
 !eval/runs/.gitkeep
+
+# Next.js
+web/next-env.d.ts
+*.tsbuildinfo
+!web/lib/

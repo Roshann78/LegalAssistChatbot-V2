@@ -101,7 +101,10 @@ def build_v1_router() -> APIRouter:
             outcome, prepared, answer, cites, timings = "error", None, "", [], {}
             try:
                 prepared = await asyncio.to_thread(
-                    pipeline.prepare, body.question, history[-window:], body.domain
+                    pipeline.prepare,
+                    body.question,
+                    history[-window:],
+                    None if body.upload_id else body.domain,
                 )
                 timings = dict(prepared.timings)
                 if prepared.abstain:

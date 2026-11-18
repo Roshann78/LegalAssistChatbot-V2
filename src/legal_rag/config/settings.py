@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -121,7 +123,7 @@ class Settings(BaseSettings):
     # ── API & Logging ────────────────────────────────────────────────────
     api_host: str = Field(default="127.0.0.1")
     api_port: int = Field(default=8000, ge=1, le=65535)
-    cors_origins: list[str] = Field(default=["http://localhost:3000"])
+    cors_origins: Annotated[list[str], NoDecode] = Field(default=["http://localhost:3000"])
     log_level: str = Field(default="INFO", description="Logging level")
 
     # ── Limits ───────────────────────────────────────────────────────────
@@ -186,7 +188,10 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
+        """Accept "a,b" (documented form) or a JSON list string from the environment."""
         if isinstance(v, str):
+            if v.strip().startswith("["):
+                return [str(o).strip() for o in json.loads(v) if str(o).strip()]
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 

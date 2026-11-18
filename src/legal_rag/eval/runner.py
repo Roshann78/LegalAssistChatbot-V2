@@ -179,8 +179,14 @@ class ExtractiveFakeLLM(LLMClient):
 
     def _reply(self, messages) -> str:
         sys_msg = messages[0]["content"]
-        body = sys_msg.split("[1]", 1)[-1].split("\n", 1)[-1].split("\n\n")[0][:300]
-        return f"{body.strip()} [1]"
+        # The context block starts after the prompt's own rules (v2: <passages>, v1: Context:).
+        for opener in ("\n<passages>\n", "Context:\n"):
+            if opener in sys_msg:
+                sys_msg = sys_msg.split(opener, 1)[1]
+                break
+        first = sys_msg.split("\n\n[2] ", 1)[0].split("</passages>", 1)[0]
+        body = first.split("\n", 1)[-1] if first.startswith("[1] ") else first
+        return f"{' '.join(body.split())[:300]} [1]"
 
     async def generate_stream(self, messages, **kw) -> AsyncIterator[str]:
         yield self._reply(messages)

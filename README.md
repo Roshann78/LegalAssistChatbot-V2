@@ -58,6 +58,23 @@ Windows without `make`: `.\make.ps1 <target>`. Docker: `docker compose up -d --b
 Set `EMBEDDING_MODEL=all-MiniLM-L6-v2` and install `uv sync --extra embeddings` for a real embedder; the
 offline `hashing-512` embedder is for tests and CI only.
 
+## Web UI (Next.js + TypeScript, `web/`)
+
+A three-panel app (sidebar, question/upload cards, answer panel with sources) that talks to the API:
+streamed answers, clickable citation markers, source passages with status tags, currency notes, thumbs
+feedback, upload chat, a Metrics page and a Documents page. Light by default, with a dark-mode toggle.
+
+```bash
+cd web
+cp .env.example .env.local      # set NEXT_PUBLIC_API_URL to your API, e.g. http://127.0.0.1:8010
+npm install
+npm run dev                      # http://localhost:3010
+```
+
+The API must allow the site's origin: `CORS_ORIGINS=http://localhost:3010` (comma-separated list or JSON list).
+`npm run typecheck` and `npm run build` are checked in CI. The simpler static page at `/ui/` is still served by
+the API. Verified by hand in a browser against the fake-LLM demo server only; no automated UI tests exist.
+
 ## API (all under `/v1`, OpenAPI at `/docs`)
 
 | Endpoint | Purpose |
@@ -94,7 +111,7 @@ Tracing is **opt-in** (`TRACE_PATH`), writes question/answer but never the promp
 * **All real-data results:** B0 baseline, the B1-B6 ablation, embedding bake-off, abstention threshold, judge
   audit, `P_final`, the single frozen test run. `R_final`/`P_final` configs are provisional placeholders.
 * **Not built:** Langfuse (a local JSONL tracer is used instead), hosted reranker, OCR, Hindi/multilingual
-  evaluation, UI compare mode and voice, Redis sessions, PDF page anchors in citations.
+  evaluation, UI compare mode and voice (in either UI), Redis sessions, PDF page anchors in citations.
 * **Never run here:** Docker image build/compose (daemon was unavailable), GitHub Actions (including the
   advisory `pip-audit` step), a real LLM, a real cross-encoder or sentence-transformer, Qdrant server mode.
 * `uv.lock` predates the newer dependencies; run `uv lock`.

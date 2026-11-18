@@ -149,3 +149,13 @@ class TestSecretMasking:
         s = self._make_settings()
         key_val = s.llm_api_key.get_secret_value()
         assert key_val == self.TEST_SECRET
+
+
+def test_cors_origins_from_environment_comma_separated_and_json(monkeypatch):
+    """Regression: CORS_ORIGINS=a,b used to crash startup (env lists were decoded as JSON)."""
+    monkeypatch.setenv("CORS_ORIGINS", "http://localhost:3010, http://127.0.0.1:3010")
+    assert Settings().cors_origins == ["http://localhost:3010", "http://127.0.0.1:3010"]
+    monkeypatch.setenv("CORS_ORIGINS", '["https://a.example","https://b.example"]')
+    assert Settings().cors_origins == ["https://a.example", "https://b.example"]
+    monkeypatch.setenv("CORS_ORIGINS", "http://only.example")
+    assert Settings().cors_origins == ["http://only.example"]
