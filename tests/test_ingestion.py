@@ -115,10 +115,12 @@ def test_hash_mismatch_detected(tmp_path):
 
 
 def test_draft_entries_scan(tmp_path):
-    f = tmp_path / "legal" / "statute" / "my_act.pdf"
+    raw = tmp_path / "data" / "raw"
+    f = raw / "legal" / "statute" / "my_act.pdf"
     f.parent.mkdir(parents=True)
     f.write_bytes(b"%PDF-1.4")
-    d = draft_entries(tmp_path)
+    d = draft_entries(raw)
+    assert d[0]["path"] == "raw/legal/statute/my_act.pdf"  # relative to the data dir
     assert d[0]["doc_id"] == "my_act" and d[0]["domain"] == "legal" and len(d[0]["file_hash"]) == 64
 
 

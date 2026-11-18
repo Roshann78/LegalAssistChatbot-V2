@@ -70,7 +70,7 @@ def draft_entries(raw_dir: Path, known: set[str] | None = None) -> list[dict]:
                 "title": f.stem.replace("_", " ").replace("-", " ").title(),
                 "doc_type": parts[1] if len(parts) >= 3 else "",
                 "domain": parts[0] if len(parts) >= 2 else "",
-                "path": f.as_posix(),
+                "path": f.relative_to(raw_dir.parent).as_posix(),
                 "file_hash": sha256_file(f),
             }
         )
