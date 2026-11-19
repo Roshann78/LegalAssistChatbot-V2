@@ -57,7 +57,10 @@ def validate_manifest(records: list[DocumentRecord], base_dir: Path) -> list[str
 
 
 def draft_entries(raw_dir: Path, known: set[str] | None = None) -> list[dict]:
-    """Scan raw_dir (<domain>/<doc_type>/<doc_id>.pdf) and draft manifest entries."""
+    """Scan raw_dir (<domain>/<file>.pdf, domain = legal|banking) and draft manifest entries.
+
+    The folder gives only the domain; `doc_type` is left blank for you to fill in the manifest.
+    """
     known = known or set()
     drafts = []
     for f in sorted(raw_dir.rglob("*")):
@@ -68,7 +71,7 @@ def draft_entries(raw_dir: Path, known: set[str] | None = None) -> list[dict]:
             {
                 "doc_id": f.stem.lower().replace(" ", "_"),
                 "title": f.stem.replace("_", " ").replace("-", " ").title(),
-                "doc_type": parts[1] if len(parts) >= 3 else "",
+                "doc_type": "",
                 "domain": parts[0] if len(parts) >= 2 else "",
                 "path": f.relative_to(raw_dir.parent).as_posix(),
                 "file_hash": sha256_file(f),
