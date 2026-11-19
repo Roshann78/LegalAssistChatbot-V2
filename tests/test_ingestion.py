@@ -192,3 +192,186 @@ def test_report_doc_type_is_accepted_and_uses_heading_chunking(tmp_path):
     f.write_text("documents:\n" + entry + "\n")
     assert load_manifest(f)[0].doc_type.value == "report"
     assert strategy_for("report") == "s3"
+
+
+# ── Drop-in sync workflow ────────────────────────────────────────────────────────────────────────
+
+
+def make_pdf(path, text):
+    import fitz
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_textbox(fitz.Rect(50, 50, 550, 780), text, fontsize=10)
+    doc.save(path)
+    doc.close()
+
+
+ACT = (
+    "THE SAMPLE THEFT ACT, 2020\n\n1. Short title. This Act is the Sample Theft Act.\n\n"
+    "2. Theft. Whoever takes property commits theft and shall be punished with imprisonment."
+)
+KYC = (
+    "Master Direction - Know Your Customer (KYC) Direction, 2016\nReserve Bank of India\n\n"
+    "1. Banks shall verify the identity of every customer opening a deposit account."
+)
+
+
+@pytest.fixture
+def sync_env(settings, tmp_path):
+    data = tmp_path / "data"
+    s = settings.model_copy(
+        update={
+            "data_dir": data,
+            "manifest_path": data / "manifest.yaml",
+            "processed_dir": data / "processed",
+            "index_path": data / "processed" / "index.json",
+        }
+    )
+    return s, data
+
+
+def do_sync(s, **kw):
+    from legal_rag.ingestion.cache import EmbeddingCache
+    from legal_rag.ingestion.indexer import Indexer
+    from legal_rag.ingestion.sync import run_sync
+    from legal_rag.retrieval.embedder import build_embedder
+    from legal_rag.retrieval.factory import build_store
+
+    emb = build_embedder(s.embedding_model)
+    store = build_store(s, emb)
+    cache = EmbeddingCache(s.embedding_cache_path, emb.name)
+    try:
+        return run_sync(s, Indexer(s, emb, store, base_dir=s.data_dir, cache=cache), store, **kw)
+    finally:
+        cache.close()
+
+
+def test_sync_classifies_flat_and_nested_drop_ins_and_appends_manifest(sync_env):
+    s, data = sync_env
+    make_pdf(data / "raw" / "sample_theft_act_2020.pdf", ACT)  # flat, domain from content
+    make_pdf(data / "raw" / "banking" / "rbi_kyc_master_direction.pdf", KYC)  # nested, folder
+    make_pdf(
+        data / "raw" / "legal" / "sc-ram-v-state-2019.pdf",
+        "IN THE SUPREME COURT OF INDIA\n1. The petitioner argues.",
+    )
+    sm = do_sync(s)
+    assert sm.ok and len(sm.added) == 3 and sm.chunks > 0
+    recs = {r.doc_id: r for r in load_manifest(s.manifest_path)}
+    assert recs["rbi_kyc_master_direction"].domain.value == "banking"
+    assert recs["rbi_kyc_master_direction"].doc_type.value == "master_direction"
+    assert recs["sample_theft_act_2020"].doc_type.value == "statute"
+    assert recs["sample_theft_act_2020"].year == 2020
+    assert recs["sc-ram-v-state-2019"].doc_type.value == "judgment"
+    assert recs["sc-ram-v-state-2019"].authority_or_court == "Supreme Court of India"
+    assert validate_manifest(list(recs.values()), data) == []
+
+
+def test_sync_preserves_manual_edits_and_skips_unchanged(sync_env):
+    s, data = sync_env
+    make_pdf(data / "raw" / "legal" / "old_act.pdf", ACT)
+    assert do_sync(s).added == ["old_act"]
+    text = s.manifest_path.read_text(encoding="utf-8")
+    edited = text.replace("status: in_force", "status: amended").replace(
+        "jurisdiction: India", "jurisdiction: India\n  source_url: https://example.org/old_act.pdf"
+    )
+    s.manifest_path.write_text("# my note\n" + edited, encoding="utf-8")
+    make_pdf(data / "raw" / "banking" / "new_circular.pdf", KYC)
+    sm = do_sync(s)
+    assert sm.added == ["new_circular"] and sm.skipped == ["old_act"] and not sm.updated
+    after = s.manifest_path.read_text(encoding="utf-8")
+    assert after.startswith("# my note\n") and "status: amended" in after
+    assert "source_url: https://example.org/old_act.pdf" in after
+    again = do_sync(s)  # nothing changed -> nothing re-ingested
+    assert not again.added and not again.updated and len(again.skipped) == 2
+
+
+def test_sync_reingests_only_modified_file_and_drops_stale_chunks(sync_env):
+    s, data = sync_env
+    f = data / "raw" / "legal" / "act_a.pdf"
+    make_pdf(f, ACT)
+    make_pdf(data / "raw" / "legal" / "act_b.pdf", ACT.replace("THEFT", "FRAUD"))
+    do_sync(s)
+    make_pdf(
+        f, "THE REPLACED ACT, 2021\n\n1. Totally different wording about quokkas and marmalade."
+    )
+    sm = do_sync(s)
+    assert sm.updated == ["act_a"] and sm.skipped == ["act_b"] and not sm.added
+    recs = load_manifest(s.manifest_path)
+    assert validate_manifest(recs, data) == []  # hash refreshed, no drift
+    from legal_rag.retrieval.embedder import build_embedder
+    from legal_rag.retrieval.factory import build_store
+
+    store = build_store(s, build_embedder(s.embedding_model))
+    blob = " ".join(c.text for c in store.get_chunks("act_a"))
+    assert "quokkas" in blob and "Whoever takes property" not in blob
+
+
+def test_sync_deleted_file_warns_then_prune_cleans_index_and_manifest(sync_env):
+    s, data = sync_env
+    keep, gone = data / "raw" / "legal" / "keep.pdf", data / "raw" / "banking" / "gone.pdf"
+    make_pdf(keep, ACT)
+    make_pdf(gone, KYC)
+    do_sync(s)
+    gone.unlink()
+    warned = do_sync(s)
+    assert warned.deleted_files == ["gone"] and not warned.removed
+    assert "gone" in warned.render() and "--prune" in warned.render()
+    assert "doc_id: gone" in s.manifest_path.read_text(encoding="utf-8")
+    pruned = do_sync(s, prune=True)
+    assert pruned.removed == ["gone"] and pruned.ok
+    text = s.manifest_path.read_text(encoding="utf-8")
+    assert "doc_id: gone" not in text and "doc_id: keep" in text
+    assert not (s.processed_dir / "gone.json").exists()
+    assert [r.doc_id for r in load_manifest(s.manifest_path)] == ["keep"]
+
+
+def test_sync_fingerprint_mismatch_needs_force(sync_env, capsys):
+    s, data = sync_env
+    make_pdf(data / "raw" / "legal" / "a.pdf", ACT)
+    do_sync(s)
+    changed = s.model_copy(update={"chunk_size": 400})
+    assert cli_run(["sync"], changed) == 3
+    assert "sync --force" in capsys.readouterr().out
+    assert cli_run(["sync", "--force"], changed) == 0
+    assert cli_run(["sync"], changed) == 0
+
+
+def test_sync_dry_run_writes_nothing(sync_env):
+    s, data = sync_env
+    make_pdf(data / "raw" / "a.pdf", ACT)
+    sm = do_sync(s, dry_run=True)
+    assert sm.added == ["a"]
+    assert not s.manifest_path.exists() and not s.index_path.exists()
+
+
+def test_manifest_edit_helpers_handle_flow_style_and_notes(tmp_path):
+    from legal_rag.ingestion.manifest_edit import append_entries, remove_entry
+
+    m = tmp_path / "m.yaml"
+    m.write_text(
+        "documents:\n  - {doc_id: a1, title: A, doc_type: report, domain: legal, path: x.pdf}\n"
+    )
+    append_entries(
+        m, [{"doc_id": "b1", "title": "B", "doc_type": "faq", "domain": "banking", "path": "y.pdf"}]
+    )
+    assert [r.doc_id for r in load_manifest(m)] == ["a1", "b1"]
+    assert remove_entry(m, "a1") and not remove_entry(m, "zzz")
+    assert [r.doc_id for r in load_manifest(m)] == ["b1"]
+    assert remove_entry(m, "b1") and "# auto-added" not in m.read_text()
+
+
+def test_startup_sync_makes_dropped_pdf_searchable(sync_env):
+    from fastapi.testclient import TestClient
+
+    from legal_rag.api.main import create_app
+    from legal_rag.eval.runner import ExtractiveFakeLLM
+
+    s, data = sync_env
+    make_pdf(data / "raw" / "legal" / "dropped.pdf", ACT)
+    s = s.model_copy(update={"auto_sync_on_startup": True})
+    with TestClient(create_app(s, llm_client=ExtractiveFakeLLM())) as client:
+        assert client.get("/ready").status_code == 200
+        stats = client.get("/v1/stats").json()
+        assert stats["documents"] == 1 and stats["chunks"] > 0

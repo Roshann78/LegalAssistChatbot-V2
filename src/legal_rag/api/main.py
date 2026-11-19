@@ -32,6 +32,7 @@ from legal_rag.api.sessions import (
 from legal_rag.api.uploads import UploadStore
 from legal_rag.config.settings import Settings, get_settings
 from legal_rag.generation.pipeline import RAGPipeline
+from legal_rag.ingestion.sync import startup_sync
 from legal_rag.llm import GroqClient, LLMAuthError, LLMClient, ResilientLLMClient
 from legal_rag.observability.logging import setup_logging
 from legal_rag.observability.metrics import Metrics
@@ -114,11 +115,16 @@ def create_app(
             if app_settings.vector_store_backend == "memory"
             else app_settings.qdrant_path.exists() or bool(app_settings.qdrant_url)
         )
-        if active_store is None and has_index:
+        if active_store is None and (has_index or app_settings.auto_sync_on_startup):
             try:
                 if active_embedder is None:
                     active_embedder = build_embedder(app_settings.embedding_model)
                 active_store = build_store(app_settings, active_embedder)
+                if app_settings.auto_sync_on_startup:
+                    # Drop-in PDFs in data/raw become searchable before the first request.
+                    await asyncio.to_thread(
+                        startup_sync, app_settings, active_embedder, active_store
+                    )
             except Exception as exc:  # model/index failure must not crash startup
                 logger.error("Failed to load index/embedder: %s", exc)
                 active_store, active_embedder = None, None

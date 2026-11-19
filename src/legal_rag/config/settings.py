@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     processed_dir: Path = Field(default=Path("data/processed"))
     eval_dir: Path = Field(default=Path("eval"))
     manifest_path: Path = Field(default=Path("data/manifest.yaml"))
+    auto_sync_on_startup: bool = Field(
+        default=False, description="Run the incremental ingestion sync when the API starts"
+    )
     index_path: Path = Field(default=Path("data/processed/index.json"))
     mappings_path: Path = Field(default=Path("data/mappings/ipc_to_bns.json"))
     feedback_path: Path = Field(default=Path("data/processed/feedback.jsonl"))

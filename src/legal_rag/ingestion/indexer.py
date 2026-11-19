@@ -155,6 +155,19 @@ class Indexer:
         )
         return summary
 
+    def sync_status(self, rec: DocumentRecord, stored_hashes: dict[str, str]) -> str:
+        """'new' (not indexed), 'changed' (file hash differs from the index) or 'unchanged'."""
+        stored = stored_hashes.get(rec.doc_id)
+        if stored is None:
+            return "new"
+        return "unchanged" if stored == sha256_file(self.base_dir / rec.path) else "changed"
+
+    def prune_document(self, doc_id: str) -> int:
+        """Remove a document's chunks and its parse cache (the source file is already gone)."""
+        removed = self.store.delete_by_doc_id(doc_id)
+        (self.processed_dir / f"{doc_id}.json").unlink(missing_ok=True)
+        return removed
+
     def remove(self, doc_id: str) -> int:
         """Delete a document's chunks from the index. Source files are never touched."""
         return self.store.delete_by_doc_id(doc_id)

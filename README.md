@@ -42,13 +42,18 @@ uv run pytest && uv run ruff check .
 make demo                                 # fixture corpus + fake LLM, UI at http://127.0.0.1:8000/ui/
 ```
 
-Index your own corpus and serve it:
+Index your own corpus and serve it. Drop `.pdf`/`.txt` files into `data/raw/legal/`, `data/raw/banking/`
+(or straight into `data/raw/`), then sync. New files are auto-classified (domain, doc type, title, year),
+appended to `data/manifest.yaml` and indexed; unchanged files are skipped, modified files are re-indexed,
+and your manual manifest edits are never overwritten. See [docs/data_folder_guide.md](docs/data_folder_guide.md).
 
 ```bash
-python -m legal_rag.ingestion draft                 # draft manifest entries from data/raw
-python -m legal_rag.ingestion validate
-python -m legal_rag.ingestion --yes reindex --all
+python -m legal_rag.ingestion sync                  # incremental: classify, append manifest, index changes
+python -m legal_rag.ingestion --dry-run sync        # preview only
+python -m legal_rag.ingestion sync --prune          # also drop deleted files from the index + manifest
+python -m legal_rag.ingestion sync --force          # rebuild all (after changing embedding model/chunking)
 python -m legal_rag.ingestion --yes report          # docs/ingestion_report.md
+# or skip the CLI: set AUTO_SYNC_ON_STARTUP=true in .env and just (re)start the API
 uvicorn legal_rag.api.main:create_app --factory
 curl -N -X POST localhost:8000/v1/ask -H 'content-type: application/json' \
      -d '{"question":"What is the punishment for theft?"}'

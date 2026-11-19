@@ -1,7 +1,7 @@
 # Corpus plan (~100 documents) — checklist, nothing downloaded
 
-Place PDFs at `data/raw/legal/<file>.pdf` or `data/raw/banking/<file>.pdf` (no further subfolders), then run `python -m legal_rag.ingestion draft`
-and complete `data/manifest.yaml` (set `doc_type` yourself; the folder only gives the domain). Prefer official sources (India Code, e-Gazette, Supreme Court, RBI);
+Place PDFs at `data/raw/legal/<file>.pdf` or `data/raw/banking/<file>.pdf` (no further subfolders), then run `python -m legal_rag.ingestion sync`
+(it auto-appends `data/manifest.yaml`; review the inferred doc_type/title/year). Prefer official sources (India Code, e-Gazette, Supreme Court, RBI);
 record `source_url` for each.
 
 - [ ] Core criminal law: BNS, BNSS, BSA (3) — India Code

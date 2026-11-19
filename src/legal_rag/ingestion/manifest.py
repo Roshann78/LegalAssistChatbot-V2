@@ -57,24 +57,19 @@ def validate_manifest(records: list[DocumentRecord], base_dir: Path) -> list[str
 
 
 def draft_entries(raw_dir: Path, known: set[str] | None = None) -> list[dict]:
-    """Scan raw_dir (<domain>/<file>.pdf, domain = legal|banking) and draft manifest entries.
+    """Classify every .pdf/.txt under raw_dir (recursive) that is not already known.
 
-    The folder gives only the domain; `doc_type` is left blank for you to fill in the manifest.
+    The folder (`legal/` or `banking/`) decides the domain; doc_type, title and year are inferred.
     """
+    from legal_rag.ingestion.classify import classify_file, discover
+
     known = known or set()
+    taken = set(known)
     drafts = []
-    for f in sorted(raw_dir.rglob("*")):
-        if f.suffix.lower() not in {".pdf", ".txt"} or f.stem in known:
+    for f in discover(raw_dir):
+        if f.stem in known:
             continue
-        parts = f.relative_to(raw_dir).parts
-        drafts.append(
-            {
-                "doc_id": f.stem.lower().replace(" ", "_"),
-                "title": f.stem.replace("_", " ").replace("-", " ").title(),
-                "doc_type": "",
-                "domain": parts[0] if len(parts) >= 2 else "",
-                "path": f.relative_to(raw_dir.parent).as_posix(),
-                "file_hash": sha256_file(f),
-            }
-        )
+        entry = classify_file(f, raw_dir, taken, f.relative_to(raw_dir.parent).as_posix())
+        taken.add(entry["doc_id"])
+        drafts.append(entry)
     return drafts

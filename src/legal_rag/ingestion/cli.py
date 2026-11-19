@@ -1,4 +1,4 @@
-"""Ingestion CLI (validate, draft, parse, add, update, remove, list, reindex, verify, ...)."""
+"""Ingestion CLI (sync, validate, draft, parse, add, update, remove, list, reindex, verify, ...)."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from legal_rag.ingestion.manifest import (
 )
 from legal_rag.ingestion.normalize import ensure_normalized
 from legal_rag.ingestion.report import lookup_section, snippet, write_report
+from legal_rag.ingestion.sync import run_sync
 from legal_rag.retrieval.embedder import build_embedder
 from legal_rag.retrieval.factory import build_store
 from legal_rag.retrieval.memory_store import FingerprintMismatchError
@@ -45,6 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("reindex").add_argument("--all", action="store_true", required=True)
     rp = sub.add_parser("report", help="verify, then write the ingestion report")
     rp.add_argument("--out", default="docs/ingestion_report.md")
+    sy = sub.add_parser("sync", help="drop-in workflow: classify new files, index only changes")
+    sy.add_argument("--prune", action="store_true", help="drop deleted files from index + manifest")
+    sy.add_argument("--force", action="store_true", help="rebuild everything (e.g. new model)")
     lk = sub.add_parser("lookup", help="find the chunk for a section by metadata only")
     lk.add_argument("doc_id")
     lk.add_argument("section")
@@ -99,6 +103,14 @@ def run(argv: list[str], settings: Settings | None = None) -> int:
 
 def _dispatch(args, s, records, by_id, idx: Indexer, store, need) -> int:
     cmd = args.cmd
+    if cmd == "sync":
+        sm = run_sync(s, idx, store, prune=args.prune, force=args.force, dry_run=args.dry_run)
+        if args.dry_run:
+            print("dry-run: nothing written")
+        print(sm.render())
+        if sm.fingerprint_error:
+            return 3
+        return 0 if sm.ok else 1
     if cmd == "list":
         indexed = set(store.list_docs())
         rows = [("doc_id", "type", "status", "indexed")]
