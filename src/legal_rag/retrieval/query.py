@@ -20,6 +20,37 @@ ABBREVIATIONS = {
     "pmjdy": "Pradhan Mantri Jan Dhan Yojana",
 }
 
+_STOP = frozenset("of and the for on in to".split())
+_ACT_WORD = re.compile(r"\b(Act|Code|Sanhita|Adhiniyam|Rules|Regulations|Scheme)\b", re.I)
+
+
+def derive_aliases(titles: list[str]) -> dict[str, str]:
+    """Acronyms for corpus titles, e.g. 'The Digital Personal Data Protection Act, 2023' -> dpdp.
+
+    Lets a question like "what is the DPDP Act" match a document that never spells the acronym.
+    Only 3-8 letter acronyms are used, so common words are never expanded.
+    """
+    out: dict[str, str] = {}
+    for title in titles:
+        t = re.sub(r"\([^)]*\)", " ", title)
+        m = _ACT_WORD.search(t)
+        if not m:
+            continue
+        phrase = re.sub(r"^\s*The\s+", "", t[: m.end()].strip(), flags=re.I)
+        words = [w for w in re.findall(r"[A-Za-z]+", phrase) if w.lower() not in _STOP]
+        core = words[:-1]  # drop the trailing Act/Code/... word
+        ab = "".join(w[0] for w in core).lower()
+        full = " ".join(w.capitalize() if w.isupper() else w for w in words)
+        last = words[-1].lower()
+        if 3 <= len(ab) <= 8 and ab not in ABBREVIATIONS:
+            out.setdefault(ab, full)
+            if last == "act":
+                out.setdefault(ab + "a", full)  # PMLA, DPDPA, ...
+        elif len(ab) == 2:  # "IT Act", "MV Act": only matched as a two-word phrase
+            out.setdefault(f"{ab} {last}", full)
+    return out
+
+
 _REF_RE = re.compile(r"\b(section|sec\.?|article)\s+(\d+[A-Za-z]{0,2})\b", re.I)
 _ACT_RE = re.compile(r"\b(ipc|bns|crpc|bnss|iea|bsa)\b", re.I)
 
@@ -111,12 +142,21 @@ def understand(
     refs: bool = True,
     abbrev: bool = True,
     use_mapping: bool = True,
+    aliases: dict[str, str] | None = None,
 ) -> UnderstoodQuery:
     standalone = rewrite_followup(question, history or []) if rewrite else question
     found = [(m.group(1).lower().rstrip("."), m.group(2)) for m in _REF_RE.finditer(standalone)]
     words = {w.lower() for w in re.findall(r"[A-Za-z]+", standalone)}
+    table = {**(aliases or {}), **ABBREVIATIONS}
+    lowered = " ".join(w.lower() for w in re.findall(r"[A-Za-z]+", standalone))
     expansion = (
-        " ".join(full for ab, full in ABBREVIATIONS.items() if ab in words) if abbrev else ""
+        " ".join(
+            full
+            for ab, full in table.items()
+            if (ab in words if " " not in ab else f" {ab} " in f" {lowered} ")
+        )
+        if abbrev
+        else ""
     )
     mapped: list[dict] = []
     acts = [a.lower() for a in _ACT_RE.findall(standalone)]

@@ -45,7 +45,7 @@ from legal_rag.retrieval.base import (
 )
 from legal_rag.retrieval.embedder import build_embedder
 from legal_rag.retrieval.factory import build_retriever, build_store
-from legal_rag.retrieval.query import MappingTable
+from legal_rag.retrieval.query import MappingTable, derive_aliases
 
 logger = logging.getLogger("legal_rag.api")
 
@@ -65,6 +65,18 @@ class UnreadyLLMClient(LLMClient):
     async def generate_stream(self, *args, **kwargs):
         raise LLMAuthError(self.reason)
         yield ""  # pragma: no cover
+
+
+def _corpus_aliases(settings: Settings) -> dict[str, str]:
+    """Acronyms (e.g. dpdp) derived from manifest titles; best effort, never blocks startup."""
+    try:
+        from legal_rag.ingestion.manifest import load_manifest
+
+        records = load_manifest(settings.manifest_path) if settings.manifest_path.exists() else []
+        return derive_aliases([r.title for r in records])
+    except Exception as exc:
+        logger.warning("could not derive title aliases: %s", exc)
+        return {}
 
 
 def create_app(
@@ -138,6 +150,7 @@ def create_app(
                 app.state.llm_client,
                 app_settings,
                 MappingTable.load(app_settings.mappings_path),
+                _corpus_aliases(app_settings),
             )
 
         # 4. Initialize session store and background cleanup

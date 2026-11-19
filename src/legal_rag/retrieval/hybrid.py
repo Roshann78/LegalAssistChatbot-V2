@@ -69,7 +69,7 @@ class Retriever:
         lists: list[list[SearchResult]] = []
         weights: list[float] = []
         if self.mode in ("dense", "hybrid"):
-            qv = self.embedder.embed([query])[0]
+            qv = self.embedder.embed([f"{query} {extra_terms}".strip()])[0]
             lists.append(self.store.dense_search(qv, filters, self.candidates))
             weights.append(self.dense_weight)
         if self.mode in ("sparse", "hybrid"):

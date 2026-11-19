@@ -80,9 +80,11 @@ class RAGPipeline:
         llm: LLMClient,
         settings: Settings,
         mapping: MappingTable | None = None,
+        aliases: dict[str, str] | None = None,
     ) -> None:
         self.retriever, self.llm, self.s = retriever, llm, settings
         self.mapping = mapping or MappingTable()
+        self.aliases = aliases or {}
 
     def prepare(
         self,
@@ -100,6 +102,7 @@ class RAGPipeline:
             refs=self.s.qu_refs,
             abbrev=self.s.qu_abbrev,
             use_mapping=self.s.qu_mapping,
+            aliases=self.aliases,
         )
         t1 = time.perf_counter()
         wants_old = any(w in uq.standalone.lower().split() for w in _OLD_ACTS)
