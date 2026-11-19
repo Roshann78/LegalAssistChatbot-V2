@@ -68,6 +68,27 @@ class TestSettingsEnvOverride:
         assert s.llm_model == "llama-3.1-8b-instant"
         assert s.retrieval_top_k == 20
 
+    def test_blank_env_values_use_defaults(self, monkeypatch):
+        monkeypatch.setenv("ABSTAIN_THRESHOLD", "")
+        monkeypatch.setenv("VECTOR_STORE_BACKEND", "")
+        monkeypatch.setenv("RETRIEVAL_MODE", "")
+        monkeypatch.setenv("RERANK_STRATEGY", "")
+        monkeypatch.setenv("UPLOAD_MAX_BYTES", "")
+        monkeypatch.setenv("UPLOAD_TTL_SECONDS", "")
+        monkeypatch.setenv("API_PORT", "")
+        monkeypatch.setenv("LOG_LEVEL", "")
+
+        s = Settings(llm_api_key="k")
+
+        assert s.abstain_threshold == 0.0
+        assert s.vector_store_backend == "memory"
+        assert s.retrieval_mode == "hybrid"
+        assert s.rerank_strategy == "none"
+        assert s.upload_max_bytes == 5_000_000
+        assert s.upload_ttl_seconds == 1800
+        assert s.api_port == 8000
+        assert s.log_level == "INFO"
+
 
 class TestSettingsValidation:
     """Invalid values are rejected with clear messages."""

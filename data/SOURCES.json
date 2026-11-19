@@ -1,0 +1,92 @@
+[
+  {
+    "doc_id": "in-constitution-of-india",
+    "url": "https://www.legislative.gov.in/static/uploads/2025/07/359f70a69695affb9d72f8393102bd2e.pdf",
+    "status": "downloaded",
+    "file": "raw/legal/constitution/in-constitution-of-india.pdf",
+    "bytes": 6655162,
+    "pages": 799,
+    "sha256": "485d637c268bd079cf07a81e7a1df05ea785e3effda167a4f19699e97279ee50"
+  },
+  {
+    "doc_id": "in-companies-act-2013",
+    "url": "https://www.mca.gov.in/content/dam/mca/pdf/CompaniesAct2013.pdf",
+    "status": "downloaded",
+    "file": "raw/legal/statute/in-companies-act-2013.pdf",
+    "bytes": 3276594,
+    "pages": 370,
+    "sha256": "863b1cf5dc33bc395fe556471279323753116220733079debb2e391f3ad11ba2"
+  },
+  {
+    "doc_id": "in-dpdp-act-2023",
+    "url": "https://www.meity.gov.in/static/uploads/2024/02/Digital-Personal-Data-Protection-Act-2023.pdf",
+    "status": "downloaded",
+    "file": "raw/legal/statute/in-dpdp-act-2023.pdf",
+    "bytes": 182082,
+    "pages": 21,
+    "sha256": "4deb23981d3010c8225a2ff6149e7243dc2268455b299e283afebdd7b72a7d15"
+  },
+  {
+    "doc_id": "in-pmla-2002",
+    "url": "https://enforcementdirectorate.gov.in/media/pmla/d7162b8f-d022-4583-b942-d5bb85dbe796_THE%20PREVENTION%20OF%20MONEY%20LAUNDERING%20ACT,%202002.pdf",
+    "status": "downloaded",
+    "file": "raw/legal/statute/in-pmla-2002.pdf",
+    "bytes": 753637,
+    "pages": 50,
+    "sha256": "fb914957aa8f03df29c060022142355a3506d80d130e3d67959a91ebe2f350c2"
+  },
+  {
+    "doc_id": "sc-puttaswamy-2017",
+    "url": "https://api.sci.gov.in/supremecourt/2012/35071/35071_2012_Judgement_24-Aug-2017.pdf",
+    "status": "downloaded",
+    "file": "raw/legal/judgment/sc-puttaswamy-2017.pdf",
+    "bytes": 3059898,
+    "pages": 547,
+    "sha256": "5367b5b41e21f3d550e185242932b8f5796852de0fabac76699295a644055bf6"
+  },
+  {
+    "doc_id": "sc-navtej-johar-2018",
+    "url": "https://api.sci.gov.in/supremecourt/2016/14961/14961_2016_Judgement_06-Sep-2018.pdf",
+    "status": "downloaded",
+    "file": "raw/legal/judgment/sc-navtej-johar-2018.pdf",
+    "bytes": 2792540,
+    "pages": 495,
+    "sha256": "900ff1e5eeee30bf3b08c1539c399b4ec164efeedefaf7efdc5dfde57a17f321"
+  },
+  {
+    "doc_id": "in-dicgc-act-1961",
+    "url": "https://www.dicgc.org.in/sites/default/files/2025-04/dicgc-act-1961-february-2025.pdf",
+    "status": "downloaded",
+    "file": "raw/banking/statute/in-dicgc-act-1961.pdf",
+    "bytes": 1412452,
+    "pages": 61,
+    "sha256": "d925b1a912f90c415c6a83df6c363c14493f35dbfc1be4b18677ce76cce10d4d"
+  },
+  {
+    "doc_id": "in-ibc-2016",
+    "url": "https://ibbi.gov.in/uploads/legalframwork/2022-04-28-181717-r28jw-af0143991dbbd963f47def187e86517f.pdf",
+    "status": "downloaded",
+    "file": "raw/banking/statute/in-ibc-2016.pdf",
+    "bytes": 835785,
+    "pages": 189,
+    "sha256": "f99be52c9836c2e7fb46f63f851681a5ee18fde2ee2aa0d086884c5022035256"
+  },
+  {
+    "doc_id": "dicgc-annual-report-2025-26",
+    "url": "https://www.dicgc.org.in/sites/default/files/2026-10/dicgc-annual-report-2025-26-english-version-compressed.pdf",
+    "status": "downloaded",
+    "file": "raw/banking/report/dicgc-annual-report-2025-26.pdf",
+    "bytes": 1925654,
+    "pages": 110,
+    "sha256": "5ffe96b70476a257d2fb9034243c51f609898ba0d314d4bbeeb5ddf28037c5bf"
+  },
+  {
+    "doc_id": "rbi-nsfi-2025-30",
+    "url": "https://www.rbi.org.in/commonman/Upload/English/Content/PDFs/English12052026.pdf",
+    "status": "downloaded",
+    "file": "raw/banking/report/rbi-nsfi-2025-30.pdf",
+    "bytes": 2042594,
+    "pages": 74,
+    "sha256": "0bf4c17221d1f11d51750900cc85d0acf44e01b5a92b39266f656f883b23acb1"
+  }
+]
