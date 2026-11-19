@@ -5,7 +5,7 @@ documents:
   title: The Constitution of India
   doc_type: constitution
   domain: legal
-  path: raw/legal/constitution/in-constitution-of-india.pdf
+  path: raw/legal/in-constitution-of-india.pdf
   jurisdiction: India
   authority_or_court: India Code (Legislative Department, Ministry of Law and Justice)
   status: in_force
@@ -21,7 +21,7 @@ documents:
   title: The Companies Act, 2013 (Act 18 of 2013)
   doc_type: statute
   domain: legal
-  path: raw/legal/statute/in-companies-act-2013.pdf
+  path: raw/legal/in-companies-act-2013.pdf
   jurisdiction: India
   authority_or_court: Ministry of Corporate Affairs
   status: in_force
@@ -38,7 +38,7 @@ documents:
   title: The Digital Personal Data Protection Act, 2023 (Act 22 of 2023)
   doc_type: statute
   domain: legal
-  path: raw/legal/statute/in-dpdp-act-2023.pdf
+  path: raw/legal/in-dpdp-act-2023.pdf
   jurisdiction: India
   authority_or_court: Ministry of Electronics and Information Technology
   status: in_force
@@ -55,7 +55,7 @@ documents:
   title: The Prevention of Money-laundering Act, 2002 (Act 15 of 2003)
   doc_type: statute
   domain: legal
-  path: raw/legal/statute/in-pmla-2002.pdf
+  path: raw/legal/in-pmla-2002.pdf
   jurisdiction: India
   authority_or_court: India Code (Legislative Department)
   status: in_force
@@ -72,7 +72,7 @@ documents:
   title: Justice K.S. Puttaswamy (Retd.) v. Union of India (privacy), 2017
   doc_type: judgment
   domain: legal
-  path: raw/legal/judgment/sc-puttaswamy-2017.pdf
+  path: raw/legal/sc-puttaswamy-2017.pdf
   jurisdiction: India
   authority_or_court: Supreme Court of India
   status: in_force
@@ -88,7 +88,7 @@ documents:
   title: Navtej Singh Johar v. Union of India (Section 377), 2018
   doc_type: judgment
   domain: legal
-  path: raw/legal/judgment/sc-navtej-johar-2018.pdf
+  path: raw/legal/sc-navtej-johar-2018.pdf
   jurisdiction: India
   authority_or_court: Supreme Court of India
   status: in_force
@@ -104,7 +104,7 @@ documents:
   title: The Deposit Insurance and Credit Guarantee Corporation Act, 1961
   doc_type: statute
   domain: banking
-  path: raw/banking/statute/in-dicgc-act-1961.pdf
+  path: raw/banking/in-dicgc-act-1961.pdf
   jurisdiction: India
   authority_or_court: Deposit Insurance and Credit Guarantee Corporation
   status: in_force
@@ -120,7 +120,7 @@ documents:
   title: The Insolvency and Bankruptcy Code, 2016 (Act 31 of 2016)
   doc_type: statute
   domain: banking
-  path: raw/banking/statute/in-ibc-2016.pdf
+  path: raw/banking/in-ibc-2016.pdf
   jurisdiction: India
   authority_or_court: India Code (Legislative Department)
   status: in_force
@@ -137,7 +137,7 @@ documents:
   title: DICGC Annual Report 2025-26
   doc_type: report
   domain: banking
-  path: raw/banking/report/dicgc-annual-report-2025-26.pdf
+  path: raw/banking/dicgc-annual-report-2025-26.pdf
   jurisdiction: India
   authority_or_court: Deposit Insurance and Credit Guarantee Corporation
   status: in_force
@@ -152,7 +152,7 @@ documents:
   title: National Strategy for Financial Inclusion 2025-30
   doc_type: report
   domain: banking
-  path: raw/banking/report/rbi-nsfi-2025-30.pdf
+  path: raw/banking/rbi-nsfi-2025-30.pdf
   jurisdiction: India
   authority_or_court: Reserve Bank of India
   status: in_force
